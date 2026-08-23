@@ -188,24 +188,23 @@ app.post('/api/admin/delete-user', verifyAdmin, async (req, res) => {
 
   try {
     const auth = getAuth();
-    let userRecord = null;
 
     try {
       if (identifier.includes('@')) {
-        userRecord = await auth.getUserByEmail(identifier.toLowerCase());
+        const userRecord = await auth.getUserByEmail(identifier.toLowerCase());
+        if (req.adminUser?.uid && userRecord.uid === req.adminUser.uid) {
+          return res.status(400).json({ success: false, error: 'অ্যাডমিন নিজের account delete করতে পারবেন না।' });
+        }
+        await auth.deleteUser(userRecord.uid);
       } else {
-        userRecord = await auth.getUser(identifier);
+        if (req.adminUser?.uid && identifier === req.adminUser.uid) {
+          return res.status(400).json({ success: false, error: 'অ্যাডমিন নিজের account delete করতে পারবেন না।' });
+        }
+        await auth.deleteUser(identifier);
       }
-    } catch (e) {
-      // ফায়ারবেসে ইউজার না থাকলে বা অন্য কোনো এরর হলেও কোড ক্র্যাশ না করে সামনে এগিয়ে যাবে
-      console.log('Firebase user lookup skipped/not found for:', identifier);
-    }
-
-    if (userRecord) {
-      if (req.adminUser?.uid && userRecord.uid === req.adminUser.uid) {
-        return res.status(400).json({ success: false, error: 'অ্যাডমিন নিজের account delete করতে পারবেন না।' });
-      }
-      await auth.deleteUser(userRecord.uid);
+    } catch (firebaseErr) {
+      // ফায়ারবেসে ইউজার না থাকলে বা আগে ডিলিট হয়ে থাকলেও কোড ক্র্যাশ না করে সামনে এগিয়ে যাবে
+      console.log('Firebase user already deleted or not found, skipping auth delete:', firebaseErr.message);
     }
 
     return res.json({ success: true, message: 'Firebase Auth account সফলভাবে মুছে ফেলা হয়েছে।' });
