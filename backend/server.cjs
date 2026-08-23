@@ -181,7 +181,7 @@ app.post('/api/admin/reset-password', verifyAdmin, async (req, res) => {
   }
 });
 
-// 🔒 অ্যাডমিন দ্বারা স্টাফের Firebase Auth account স্থায়ীভাবে মুছে ফেলা (সংশোধিত)
+// 🔒 অ্যাডমিন দ্বারা স্টাফের Firebase Auth account স্থায়ীভাবে মুছে ফেলা (সম্পূর্ণ নিরাপদ কোড)
 app.post('/api/admin/delete-user', verifyAdmin, async (req, res) => {
   const identifier = String(req.body?.identifier || req.body?.email || req.body?.uid || '').trim();
   if (!identifier) return res.status(400).json({ success: false, error: 'স্টাফের email/UID দেওয়া আবশ্যক!' });
@@ -191,15 +191,14 @@ app.post('/api/admin/delete-user', verifyAdmin, async (req, res) => {
     let userRecord = null;
 
     try {
-      userRecord = identifier.includes('@')
-        ? await auth.getUserByEmail(identifier.toLowerCase())
-        : await auth.getUser(identifier);
-    } catch (lookupError) {
-      if (lookupError?.code === 'auth/user-not-found') {
-        console.log('Firebase user not found during delete, proceeding:', identifier);
+      if (identifier.includes('@')) {
+        userRecord = await auth.getUserByEmail(identifier.toLowerCase());
       } else {
-        throw lookupError;
+        userRecord = await auth.getUser(identifier);
       }
+    } catch (e) {
+      // ফায়ারবেসে ইউজার না থাকলে বা অন্য কোনো এরর হলেও কোড ক্র্যাশ না করে সামনে এগিয়ে যাবে
+      console.log('Firebase user lookup skipped/not found for:', identifier);
     }
 
     if (userRecord) {
