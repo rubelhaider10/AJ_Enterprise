@@ -181,7 +181,7 @@ app.post('/api/admin/reset-password', verifyAdmin, async (req, res) => {
   }
 });
 
-// 🔒 অ্যাডমিন দ্বারা স্টাফের Firebase Auth account স্থায়ীভাবে মুছে ফেলা (১০০% ক্র্যাশ-প্রুফ ও সিনট্যাক্স ঠিক করা কোড)
+// 🔒 অ্যাডমিন দ্বারা স্টাফের Firebase Auth account স্থায়ীভাবে মুছে ফেলা (১০০% ক্র্যাশ-প্রুফ কোড)
 app.post('/api/admin/delete-user', verifyAdmin, async (req, res) => {
   const identifier = String(req.body?.identifier || req.body?.email || req.body?.uid || '').trim();
   if (!identifier) {
@@ -192,7 +192,7 @@ app.post('/api/admin/delete-user', verifyAdmin, async (req, res) => {
     const auth = getAuth();
     let uidToDelete = null;
 
-    // ১. ফায়ারবেস থেকে ইউজার খোঁজার চেষ্টা
+    // ফায়ারবেস থেকে ইউজার খোঁজার জন্য আলাদা নিরাপদ ছোট ব্লক (এখানে এরর আসলেও কোড ক্র্যাশ করবে না)
     try {
       if (identifier.includes('@')) {
         const userRecord = await auth.getUserByEmail(identifier.toLowerCase());
@@ -202,10 +202,10 @@ app.post('/api/admin/delete-user', verifyAdmin, async (req, res) => {
         uidToDelete = userRecord.uid;
       }
     } catch (lookupErr) {
-      console.log('Firebase user not found during lookup, skipping auth delete:', lookupErr.message);
+      console.log('Firebase lookup warning (ignored):', lookupErr.message);
     }
 
-    // ২. ইউজার পাওয়া গেলে ডিলিট করার চেষ্টা
+    // যদি ফায়ারবেসে ইউজার পাওয়া যায়, কেবল তবেই ডিলিট করার চেষ্টা করবে
     if (uidToDelete) {
       if (req.adminUser?.uid && uidToDelete === req.adminUser.uid) {
         return res.status(400).json({ success: false, error: 'অ্যাডমিন নিজের account delete করতে পারবেন না।' });
@@ -213,7 +213,7 @@ app.post('/api/admin/delete-user', verifyAdmin, async (req, res) => {
       try {
         await auth.deleteUser(uidToDelete);
       } catch (delErr) {
-        console.log('Firebase delete auth error ignored:', delErr.message);
+        console.log('Firebase delete error ignored:', delErr.message);
       }
     }
 
