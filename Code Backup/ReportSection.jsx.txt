@@ -1,0 +1,185 @@
+import React from 'react';
+
+export default function ReportSection({
+  currentUser,
+  filterMode,
+  selectedDate,
+  selectedMonth,
+  selectedStaff,
+  staffDataMap,
+  showReport,
+  setShowReport,
+  sortedBusWiseMonthlySummary,
+  sortedSales,
+  sortedExpenses,
+  statementWithBalance,
+  downloadPDF,
+  formatDate,
+  formatMonth,
+  handleOpenEditSale,
+  handleDeleteSale,
+  handleDeleteExpense,
+  startDate,
+  endDate
+}) {
+  // টেক্সট কনটেন্ট ক্যালকুলেশন
+  const staffText = selectedStaff === 'all' ? 'সকল স্টাফ (সবাই)' : (staffDataMap[selectedStaff]?.name || selectedStaff);
+  
+  const periodText = filterMode === 'daily' 
+    ? `তারিখ: ${formatDate(selectedDate)}` 
+    : filterMode === 'monthly' 
+    ? `মাস: ${formatMonth(selectedMonth)}` 
+    : `সময়কাল: ${formatDate(startDate)} হতে ${formatDate(endDate)}`;
+
+  // কমন স্টাইল অবজেক্ট
+  const styles = {
+    container: { backgroundColor: '#0B2A55', padding: '28px', borderRadius: '16px', border: '1px solid #334155', color: '#fff', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)' },
+    header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '15px', borderBottom: '2px solid #334155', paddingBottom: '14px' },
+    table: { width: '100%', borderCollapse: 'collapse', fontSize: '13px', background: '#1e293b', borderRadius: '8px', overflow: 'hidden' },
+    th: { padding: '10px 12px', background: '#0f172a', color: '#94a3b8', textAlign: 'left' },
+    td: { padding: '10px 12px', borderBottom: '1px solid #334155' }
+  };
+
+  const editBtnStyle = {
+    padding: '4px 8px',
+    backgroundColor: '#2563eb',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    fontSize: '0.8rem',
+    fontWeight: '600',
+  };
+
+  const deleteBtnStyle = {
+    padding: '4px 8px',
+    backgroundColor: '#dc2626',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    fontSize: '0.8rem',
+    fontWeight: '600',
+  };
+
+  return (
+    <div style={styles.container}>
+      <div style={styles.header}>
+        <div>
+          <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#fbbf24' }}>
+            📊 সেলস ও রিপোর্ট সামারি ({periodText})
+          </h3>
+          <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#94a3b8' }}>
+            ম্যানেজার/স্টাফ: {currentUser.role === 'ADMIN' ? staffText : currentUser.name}
+          </p>
+        </div>
+        
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <button 
+            onClick={downloadPDF}
+            style={{ padding: '9px 16px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}
+          >
+            📥 প্রিন্ট / PDF ডাউনলোড
+          </button>
+          <button 
+            onClick={() => setShowReport(!showReport)}
+            style={{ padding: '9px 14px', backgroundColor: '#334155', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}
+          >
+            {showReport ? 'রিপোর্ট লুকিয়ে রাখুন' : 'রিপোর্ট দেখান'}
+          </button>
+        </div>
+      </div>
+
+      {showReport && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '25px' }}>
+          
+          {/* মাসিক বাস ওয়াইজ সামারি */}
+          {filterMode === 'monthly' && sortedBusWiseMonthlySummary.length > 0 && (
+            <div>
+              <h4 style={{ fontSize: '15px', color: '#38bdf8', marginBottom: '10px' }}>🚌 কাউন্টার ও বাস অনুযায়ী মোট মাসিক হিসাব</h4>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={styles.table}>
+                  <thead><tr><th style={styles.th}>কাউন্টার / বাস ও ধরন</th><th style={styles.th}>মোট টিকেট</th><th style={styles.th}>মোট কমিশন (টাকা)</th></tr></thead>
+                  <tbody>
+                    {sortedBusWiseMonthlySummary.map((item, idx) => (
+                      <tr key={idx}>
+                        <td style={styles.td}>{item.transport} ({item.ticketType})</td>
+                        <td style={{...styles.td, color: '#4ade80', fontWeight: 'bold'}}>{item.totalTickets} টি</td>
+                        <td style={{...styles.td, color: '#4ade80', fontWeight: 'bold'}}>৳ {item.totalCommission}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* বিস্তারিত ট্রানজ্যাকশন টেবিল */}
+          <div>
+            <h4 style={{ fontSize: '15px', color: '#38bdf8', marginBottom: '10px' }}>📋 বিস্তারিত ট্রানজ্যাকশন ও স্টেটমেন্ট</h4>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th style={styles.th}>তারিখ</th>
+                    <th style={styles.th}>স্টাফ নাম</th>
+                    <th style={styles.th}>বিবরণ</th>
+                    <th style={styles.th}>টিকেট</th>
+                    <th style={styles.th}>ইনকাম</th>
+                    <th style={styles.th}>খরচ</th>
+                    <th style={styles.th}>ব্যালেন্স</th>
+                    {currentUser?.role === 'ADMIN' && <th style={styles.th}>অ্যাকশন</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {statementWithBalance.map((item, idx) => (
+                    <tr key={idx}>
+                      <td style={styles.td}>{formatDate(item.date)}</td>
+                      <td style={{...styles.td, fontWeight: '600'}}>{item.staffName}</td>
+                      <td style={styles.td}>{item.title}</td>
+                      <td style={styles.td}>{item.tickets || '-'}</td>
+                      <td style={{...styles.td, color: item.type === 'INCOME' ? '#4ade80' : 'inherit'}}>{item.type === 'INCOME' ? `৳ ${item.amount}` : '-'}</td>
+                      <td style={{...styles.td, color: item.type === 'EXPENSE' ? '#f87171' : 'inherit'}}>{item.type === 'EXPENSE' ? `৳ ${item.amount}` : '-'}</td>
+                      <td style={{...styles.td, color: '#60a5fa', fontWeight: 'bold'}}>৳ {item.balance}</td>
+                      {currentUser?.role === 'ADMIN' && (
+                        <td style={styles.td}>
+                          <div style={{ display: 'flex', gap: '6px' }}>
+                            {item.type === 'INCOME' && handleOpenEditSale && (
+                              <button 
+                                onClick={() => handleOpenEditSale(item)} 
+                                style={editBtnStyle}
+                              >
+                                এডিট
+                              </button>
+                            )}
+                            {item.type === 'INCOME' && handleDeleteSale && (
+                              <button 
+                                onClick={() => handleDeleteSale(item.id || item.saleId)} 
+                                style={deleteBtnStyle}
+                              >
+                                ডিলিট
+                              </button>
+                            )}
+                            {item.type === 'EXPENSE' && handleDeleteExpense && (
+                              <button 
+                                onClick={() => handleDeleteExpense(item.id || item.expenseId)} 
+                                style={deleteBtnStyle}
+                              >
+                                ডিলিট
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+      )}
+    </div>
+  );
+}

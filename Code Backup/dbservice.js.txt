@@ -1,0 +1,142 @@
+import { db, auth } from '../firebase';
+import { initializeApp, deleteApp } from 'firebase/app';
+import { getAuth, createUserWithEmailAndPassword as createAuthUser } from 'firebase/auth';
+import { doc, setDoc, updateDoc, deleteDoc, collection, onSnapshot, addDoc } from 'firebase/firestore';
+
+// রিয়েল-টাইম লিসেনার বা সাবস্ক্রিপশন ফাংশনসমূহ[cite: 12]
+export const subscribeBooths = (callback) => {
+  return onSnapshot(collection(db, "booths"), (snapshot) => {
+    const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    callback(data);
+  });
+};
+
+export const subscribeSales = (callback) => {
+  return onSnapshot(collection(db, "sales"), (snapshot) => {
+    const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    callback(data);
+  });
+};
+
+export const subscribeExpenses = (callback) => {
+  return onSnapshot(collection(db, "expenses"), (snapshot) => {
+    const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    callback(data);
+  });
+};
+
+export const subscribeSalaries = (callback) => {
+  return onSnapshot(collection(db, "salaries"), (snapshot) => {
+    const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    callback(data);
+  });
+};
+
+// স্টাফ ম্যানেজমেন্ট সার্ভিস[cite: 12]
+export const createStaffService = async ({ newName, newEmail, newPassword, newBuses, newBranch }) => {
+  let secondaryApp = null;
+  try {
+    secondaryApp = initializeApp(auth.app.options, "SecondaryAppForStaffCreation");
+    const secondaryAuth = getAuth(secondaryApp);
+    
+    await createAuthUser(secondaryAuth, newEmail, newPassword);
+    
+    // সেফটি চেক: newBuses যদি undefined বা string না হয়, তবে অ্যাপ ক্র্যাশ করবে না[cite: 13]
+    const busesArray = typeof newBuses === 'string' 
+      ? newBuses.split(',').map(b => b.trim()).filter(Boolean) 
+      : [];
+
+    await setDoc(doc(db, "staff", newEmail), {
+      name: newName,
+      email: newEmail,
+      branch: newBranch,
+      buses: busesArray,
+      role: 'STAFF',
+      canExpense: true,
+      basicSalary: 15000,
+      advanceSalary: 0,
+      isDeleted: false
+    }, { merge: true });
+
+    if (secondaryApp) {
+      await deleteApp(secondaryApp);
+    }
+    return { success: true };
+  } catch (error) {
+    if (secondaryApp) {
+      try { await deleteApp(secondaryApp); } catch (err) {}
+    }
+    return { success: false, error: error.message };
+  }
+};
+
+export const updateStaffService = async (email, updateData) => {
+  await updateDoc(doc(db, "staff", email), updateData);
+};
+
+export const setStaffDeletedStatus = async (email, isDeleted) => {
+  await setDoc(doc(db, "staff", email), { isDeleted }, { merge: true });
+};
+
+export const permanentDeleteStaffService = async (email) => {
+  await deleteDoc(doc(db, "staff", email));
+};
+
+// বুথ ও ভাড়া সার্ভিস[cite: 12]
+export const addBoothService = async (boothData) => {
+  await addDoc(collection(db, "booths"), boothData);
+};
+
+export const updateBoothRentService = async (id, rent) => {
+  await updateDoc(doc(db, "booths", id), { rent: Number(rent) });
+};
+
+export const setBoothDeletedStatus = async (id, isDeleted) => {
+  await updateDoc(doc(db, "booths", id), { isDeleted });
+};
+
+export const permanentDeleteBoothService = async (id) => {
+  await deleteDoc(doc(db, "booths", id));
+};
+
+// খরচ সার্ভিস[cite: 12]
+export const addExpenseService = async (expenseData) => {
+  await addDoc(collection(db, "expenses"), expenseData);
+};
+
+export const setExpenseDeletedStatus = async (id, isDeleted) => {
+  await updateDoc(doc(db, "expenses", id), { isDeleted });
+};
+
+export const permanentDeleteExpenseService = async (id) => {
+  await deleteDoc(doc(db, "expenses", id));
+};
+
+// বেতন সার্ভিস[cite: 12]
+export const addSalaryService = async (salaryData) => {
+  await addDoc(collection(db, "salaries"), salaryData);
+};
+
+export const setSalaryDeletedStatus = async (id, isDeleted) => {
+  await updateDoc(doc(db, "salaries", id), { isDeleted });
+};
+
+export const permanentDeleteSalaryService = async (id) => {
+  await deleteDoc(doc(db, "salaries", id));
+};
+
+// বিক্রয় (Sales) সার্ভিস - সিঙ্গুলার ও প্লুরাল উভয় নাম এক্সপোর্ট করা হলো
+export const setSaleDeletedStatus = async (id, isDeleted) => {
+  await updateDoc(doc(db, "sales", id), { isDeleted });
+};
+export const setSalesDeletedStatus = setSaleDeletedStatus;
+
+export const updateSaleService = async (id, updatedFields) => {
+  await updateDoc(doc(db, "sales", id), updatedFields);
+};
+export const updateSalesService = updateSaleService;
+
+export const permanentDeleteSaleService = async (id) => {
+  await deleteDoc(doc(db, "sales", id));
+};
+export const permanentDeleteSalesService = permanentDeleteSaleService;

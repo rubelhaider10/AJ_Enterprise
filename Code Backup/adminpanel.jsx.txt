@@ -1,0 +1,1727 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  subscribeBooths, 
+  subscribeSales, 
+  subscribeExpenses, 
+  subscribeSalaries, 
+  subscribeCounters,
+  createStaffService, 
+  updateStaffService, 
+  setStaffDeletedStatus, 
+  permanentDeleteStaffService, 
+  addBoothService, 
+  updateBoothRentService, 
+  setBoothDeletedStatus, 
+  permanentDeleteBoothService, 
+  addExpenseService, 
+  setExpenseDeletedStatus, 
+  permanentDeleteExpenseService, 
+  addSalaryService, 
+  setSalaryDeletedStatus, 
+  permanentDeleteSalaryService,
+  setSaleDeletedStatus,
+  updateSaleService,
+  permanentDeleteSaleService,
+  addCounterService,
+  updateCounterService,
+  setCounterDeletedStatus,
+  permanentDeleteCounterService
+} from './dbService';
+
+const INITIAL_COUNTERS = [
+  "হানিফ এন্টারপ্রাইজ-আব্দুল্লাহপুর",
+  "একতা পরিবহন-আজমপুর",
+  "এস আর ট্রাভেলস-আব্দুল্লাহপুর", 
+  "ইমাদ কাউন্টার মালেকা বানু"
+];
+
+export default function AdminPanel({ staffDataMap = {} }) {
+  const [activeTab, setActiveTab] = useState('staff');
+
+  // সাবমিশন লোডিং স্টেটসমূহ
+  const [isAddingCounter, setIsAddingCounter] = useState(false);
+  const [isAddingStaff, setIsAddingStaff] = useState(false);
+  const [isUpdatingStaff, setIsUpdatingStaff] = useState(false);
+  const [isAddingBooth, setIsAddingBooth] = useState(false);
+  const [isAddingExpense, setIsAddingExpense] = useState(false);
+  const [isSavingSalary, setIsSavingSalary] = useState(false);
+
+  // ফায়ারবেস থেকে কাউন্টার ডেটা সিঙ্ক করার স্টেট
+  const [counters, setCounters] = useState([]);
+
+  // নতুন কাউন্টার ইনপুট স্টেট
+  const [newDynamicCounterInput, setNewDynamicCounterInput] = useState('');
+
+  // কাউন্টার এডিট করার জন্য নতুন স্টেট
+  const [editingCounterId, setEditingCounterId] = useState(null);
+  const [editedCounterName, setEditedCounterName] = useState('');
+
+  // কাউন্টার সেকশন ড্রপডাউন / টগল স্টেট
+  const [isCounterSectionOpen, setIsCounterSectionOpen] = useState(false);
+
+  // স্টাফ বেতন টেবিল ড্রপডাউন / টগল স্টেট
+  const [isSalaryTableOpen, setIsSalaryTableOpen] = useState(false);
+
+  // অন্যান্য কালেকশন স্টেটসমূহ
+  const [booths, setBooths] = useState([]);
+  const [sales, setSales] = useState([]);
+  const [expenses, setExpenses] = useState([]);
+  const [salaries, setSalaries] = useState([]);
+
+  // ফায়ারবেস রিয়েলটাইম সাবস্ক্রিপশন
+  useEffect(() => {
+    const unsubCounters = subscribeCounters(setCounters);
+    const unsubBooths = subscribeBooths(setBooths);
+    const unsubSales = subscribeSales(setSales);
+    const unsubExpenses = subscribeExpenses(setExpenses);
+    const unsubSalaries = subscribeSalaries(setSalaries);
+
+    return () => {
+      unsubCounters();
+      unsubBooths();
+      unsubSales();
+      unsubExpenses();
+      unsubSalaries();
+    };
+  }, []);
+
+  // ফায়ারবেস থেকে প্রাপ্তভ্য সক্রিয় কাউন্টার তালিকা
+  const activeCountersList = counters
+    .filter(c => !c.isDeleted)
+    .map(c => c.name || c.counterName || c);
+
+  // যদি ফায়ারবেসে কাউন্টার না থাকে তবে ইনিশিয়াল কাউন্টার ব্যবহার করা
+  const countersList = activeCountersList.length > 0 ? activeCountersList : INITIAL_COUNTERS;
+
+  const handleAddNewCounter = async () => {
+    if (isAddingCounter) return;
+    if (!newDynamicCounterInput.trim()) return alert('দয়া করে কাউন্টারের নাম লিখুন!');
+    if (countersList.includes(newDynamicCounterInput.trim())) {
+      return alert('এই কাউন্টারটি ইতিমধ্যে তালিকায় রয়েছে!');
+    }
+    setIsAddingCounter(true);
+    try {
+      await addCounterService({
+        name: newDynamicCounterInput.trim(),
+        isDeleted: false
+      });
+      setNewDynamicCounterInput('');
+      alert('নতুন কাউন্টার সফলভাবে ফায়ারবেসে যুক্ত করা হয়েছে!');
+    } catch (error) {
+      alert('কাউন্টার যুক্ত করতে সমস্যা: ' + error.message);
+    } finally {
+      setIsAddingCounter(false);
+    }
+  };
+
+  // ১. কাউন্টার রিসাইকেল বিনে পাঠানোর ফাংশন
+  const handleDeleteCounter = async (counterObjOrName) => {
+    const counterName = typeof counterObjOrName === 'object' ? counterObjOrName.name : counterObjOrName;
+    const targetObj = counters.find(c => (c.name || c) === counterName);
+
+    if (window.confirm(`আপনি কি নিশ্চিতভাবে "${counterName}" কাউন্টারটি রিসাইকেল বিনে পাঠাতে চান?`)) {
+      try {
+        if (targetObj && targetObj.id) {
+          await setCounterDeletedStatus(targetObj.id, true);
+        } else {
+          const found = counters.find(c => c.name === counterName);
+          if (found) await setCounterDeletedStatus(found.id, true);
+        }
+        alert('কাউন্টারটি রিসাইকেল বিনে পাঠানো হয়েছে!');
+      } catch (error) {
+        alert('রিসাইকেল বিনে পাঠাতে সমস্যা: ' + error.message);
+      }
+    }
+  };
+
+  // কাউন্টার রিস্টোর করার ফাংশন
+  const handleRestoreCounter = async (counterObj) => {
+    try {
+      await setCounterDeletedStatus(counterObj.id, false);
+      alert('কাউন্টারটি সফলভাবে পুনরুদ্ধার করা হয়েছে!');
+    } catch (error) {
+      alert('রিস্টোর করতে সমস্যা: ' + error.message);
+    }
+  };
+
+  // কাউন্টার চিরতরে ডিলিট করার ফাংশন
+  const handlePermanentDeleteCounter = async (counterObj) => {
+    if (!window.confirm(`⚠️ সতর্কবাণী: "${counterObj.name}" কাউন্টারটি চিরতরে মুছে ফেলতে চান?`)) return;
+    try {
+      await permanentDeleteCounterService(counterObj.id);
+      alert('কাউন্টারটি চিরতরে ডিলিট করা হয়েছে!');
+    } catch (error) {
+      alert('চিরতরে ডিলিট করতে সমস্যা: ' + error.message);
+    }
+  };
+
+  // ২. কাউন্টার এডিট শুরু করার ফাংশন
+  const handleEditCounterClick = (counterObj) => {
+    setEditingCounterId(counterObj.id);
+    setEditedCounterName(counterObj.name);
+  };
+
+  // ৩. এডিট সেভ করার ফাংশন
+  const handleSaveCounterEdit = async (counterId) => {
+    if (!editedCounterName.trim()) return alert('কাউন্টারের নাম খালি রাখা যাবে না!');
+    if (countersList.includes(editedCounterName.trim())) {
+      return alert('এই নামের কাউন্টার ইতিমধ্যে তালিকায় রয়েছে!');
+    }
+
+    try {
+      await updateCounterService(counterId, { name: editedCounterName.trim() });
+      setEditingCounterId(null);
+      setEditedCounterName('');
+      alert('কাউন্টারের তথ্য সফলভাবে আপডেট করা হয়েছে!');
+    } catch (error) {
+      alert('আপডেট করতে সমস্যা: ' + error.message);
+    }
+  };
+
+  const ALL_REPORT_COUNTERS = [
+    ...countersList,
+    "অনির্দিষ্ট/অন্যান্য কাউন্টার"
+  ];
+
+  const [newName, setNewName] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [newCategory, setNewCategory] = useState('counter');
+  const [newBuses, setNewBuses] = useState('');
+  const [newBranch, setNewBranch] = useState(countersList[0] || '');
+  
+  const [selectedStaffEmail, setSelectedStaffEmail] = useState('');
+  const [editCategory, setEditCategory] = useState('counter');
+  const [editBuses, setEditBuses] = useState('');
+  const [editBasicSalary, setEditBasicSalary] = useState('');
+  const [editAdvanceSalary, setEditAdvanceSalary] = useState('');
+  const [editBranch, setEditBranch] = useState(countersList[0] || '');
+
+  const [newCounter, setNewCounter] = useState(countersList[0] || '');
+  const [newBoothNo, setNewBoothNo] = useState('');
+  const [newTenant, setNewTenant] = useState('');
+  const [newRent, setNewRent] = useState('');
+
+  const [expenseCounter, setExpenseCounter] = useState(countersList[0] || '');
+  const [expenseTitle, setExpenseTitle] = useState('');
+  const [expenseAmount, setExpenseAmount] = useState('');
+  const [expenseDate, setExpenseDate] = useState(new Date().toISOString().split('T')[0]);
+
+  const [openCounters, setOpenCounters] = useState({});
+
+  const toggleCounterAccordion = (counterName) => {
+    setOpenCounters(prev => ({
+      ...prev,
+      [counterName]: !prev[counterName]
+    }));
+  };
+
+  const getCurrentMonthString = () => {
+    const months = [
+      "January", "February", "March", "April", "May", "June", 
+      "July", "August", "September", "October", "November", "December"
+    ];
+    const d = new Date();
+    return `${months[d.getMonth()]} ${d.getFullYear().toString().slice(-2)}`;
+  };
+
+  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthString());
+  
+  const [salaryForm, setSalaryForm] = useState({
+    month: getCurrentMonthString(),
+    staffName: '',
+    branch: countersList[0] || '',
+    staffId: '',
+    designation: '',
+    transportName: 'একতা ট্রান্সপোর্ট',
+    basicSalary: '',
+    daysInMonth: '31',
+    absentDays: '0', 
+    unpaidLeaveDeduction: '0', 
+    advanceSalary: '0',
+    totalPayable: '', 
+    paymentStatus: 'অপরিশোধ'
+  });
+
+  const generateMonthOptions = () => {
+    const months = [
+      "January", "February", "March", "April", "May", "June", 
+      "July", "August", "September", "October", "November", "December"
+    ];
+    const currentDate = new Date();
+    const currentMonthIndex = currentDate.getMonth(); 
+    const currentFullYear = currentDate.getFullYear();
+    const options = [];
+
+    for (let i = -6; i <= 6; i++) {
+      let d = new Date(currentFullYear, currentMonthIndex + i, 1);
+      let mName = months[d.getMonth()];
+      let yShort = d.getFullYear().toString().slice(-2);
+      options.push(`${mName} ${yShort}`);
+    }
+    return options;
+  };
+
+  const formatDateToCustom = (dateString) => {
+    if (!dateString) return '';
+    let d;
+    if (dateString && typeof dateString.toDate === 'function') {
+      d = dateString.toDate();
+    } else {
+      d = new Date(dateString);
+    }
+    if (isNaN(d.getTime())) return dateString;
+    const day = String(d.getDate()).padStart(2, '0');
+    const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+    const month = months[d.getMonth()];
+    const year = String(d.getFullYear()).slice(-2);
+    return `${day}-${month}-${year}`;
+  };
+
+  const matchMonth = (dateVal, targetMonthStr) => {
+    if (!dateVal || !targetMonthStr) return false;
+    
+    let d;
+    if (dateVal && typeof dateVal.toDate === 'function') {
+      d = dateVal.toDate();
+    } else if (typeof dateVal === 'string' && dateVal.includes('-') && dateVal.split('-')[0].length === 2) {
+      const parts = dateVal.split('-');
+      const day = parts[0];
+      const mStr = parts[1].toUpperCase();
+      const yr = parts[2];
+      const monthMapNum = {'JAN': '01', 'FEB': '02', 'MAR': '03', 'APR': '04', 'MAY': '05', 'JUN': '06', 'JUL': '07', 'AUG': '08', 'SEP': '09', 'OCT': '10', 'NOV': '11', 'DEC': '12'};
+      d = new Date(`20${yr}-${monthMapNum[mStr] || '01'}-${day}`);
+    } else {
+      d = new Date(dateVal);
+    }
+
+    if (!d || isNaN(d.getTime())) return false;
+
+    const parts = targetMonthStr.split(' ');
+    if (parts.length < 2) return false;
+    const targetFullMonth = parts[0].toUpperCase();
+    const targetYear = parts[1];
+
+    const monthMap = {
+      'JANUARY': 0, 'FEBRUARY': 1, 'MARCH': 2, 'APRIL': 3,
+      'MAY': 4, 'JUNE': 5, 'JULY': 6, 'AUGUST': 7,
+      'SEPTEMBER': 8, 'OCTOBER': 9, 'NOVEMBER': 10, 'DECEMBER': 11
+    };
+
+    const targetMonthIndex = monthMap[targetFullMonth];
+    if (targetMonthIndex === undefined) return false;
+
+    return d.getMonth() === targetMonthIndex && String(d.getFullYear()).slice(-2) === targetYear;
+  };
+
+  useEffect(() => {
+    if (selectedStaffEmail && staffDataMap?.[selectedStaffEmail]) {
+      const staff = staffDataMap[selectedStaffEmail];
+      setEditCategory(staff.category || 'counter');
+      setEditBuses(staff.buses ? staff.buses.join(', ') : '');
+      setEditBasicSalary(staff.basicsalary !== undefined ? staff.basicsalary : (staff.basicSalary || '15000'));
+      setEditAdvanceSalary(staff.advancesalary !== undefined ? staff.advancesalary : (staff.advanceSalary || '0'));
+      setEditBranch(staff.branch || countersList[0]);
+    }
+  }, [selectedStaffEmail]);
+
+  const handleAddStaff = async (e) => {
+    e.preventDefault();
+    if (isAddingStaff) return;
+    if (!newName || !newEmail || !newPassword || !newBranch) return alert('দয়া করে সবগুলো ঘর পূরণ করুন!');
+    if (newCategory.toLowerCase() === 'counter' && !newBuses) return alert('দয়া করে বাসের তালিকা দিন!');
+
+    const busesArray = newCategory.toLowerCase() === 'counter' ? newBuses.split(',').map(b => b.trim()).filter(Boolean) : [];
+    
+    setIsAddingStaff(true);
+    try {
+      const result = await createStaffService({ 
+        newName, 
+        newEmail, 
+        newPassword, 
+        newBranch, 
+        category: newCategory.toLowerCase(), 
+        buses: busesArray 
+      });
+      if (result.success) {
+        alert('নতুন স্টাফ সফলভাবে যুক্ত করা হয়েছে!');
+        setNewName(''); setNewEmail(''); setNewPassword(''); setNewBuses(''); setNewBranch(countersList[0]); setNewCategory('counter');
+      } else {
+        alert('স্টাফ যুক্ত করতে সমস্যা: ' + result.error);
+      }
+    } finally {
+      setIsAddingStaff(false);
+    }
+  };
+
+  const handleUpdateStaff = async (e) => {
+    e.preventDefault();
+    if (isUpdatingStaff) return;
+    if (!selectedStaffEmail) return alert('দয়া করে একজন স্টাফ সিলেক্ট করুন!');
+    setIsUpdatingStaff(true);
+    try {
+      const busesArray = editCategory.toLowerCase() === 'counter' && editBuses 
+        ? editBuses.split(',').map(b => b.trim()).filter(Boolean) 
+        : [];
+
+      await updateStaffService(selectedStaffEmail, {
+        branch: editBranch,
+        category: editCategory.toLowerCase(),
+        buses: busesArray,
+        basicSalary: Number(editBasicSalary) || 0,
+        advanceSalary: Number(editAdvanceSalary) || 0
+      });
+      alert('স্টাফের তথ্য সফলভাবে আপডেট করা হয়েছে!');
+    } catch (error) {
+      alert('আপডেট করতে সমস্যা হয়েছে: ' + error.message);
+    } finally {
+      setIsUpdatingStaff(false);
+    }
+  };
+
+  const handleDeleteStaff = async () => {
+    if (!selectedStaffEmail) return alert('দয়া করে মুছে ফেলার জন্য একজন স্টাফ সিলেক্ট করুন!');
+    if (!window.confirm(`আপনি কি নিশ্চিতভাবে ${selectedStaffEmail} কে রিসাইকেল বিনে পাঠাতে চান?`)) return;
+    try {
+      await setStaffDeletedStatus(selectedStaffEmail, true);
+      alert('স্টাফ রিসাইকেল বিনে পাঠানো হয়েছে!');
+      setSelectedStaffEmail('');
+      setEditBuses('');
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const handleRestoreStaff = async (email) => {
+    try {
+      await setStaffDeletedStatus(email, false);
+      alert('স্টাফ সফলভাবে পুনরুদ্ধার করা হয়েছে!');
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const handlePermanentDeleteStaff = async (email) => {
+    if (!window.confirm(`⚠️ সতর্কবাণী: ${email} স্টাফটিকে ডাটাবেজ থেকে চিরতরে মুছে ফেলতে চান? এটি আর ফেরানো যাবে না!`)) return;
+    try {
+      await permanentDeleteStaffService(email);
+      alert('স্টাফ সফলভাবে চিরতরে ডিলিট করা হয়েছে!');
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const handleRestoreBooth = async (id) => {
+    try {
+      await setBoothDeletedStatus(id, false);
+      alert('বুথ সফলভাবে পুনরুদ্ধার করা হয়েছে!');
+    } catch (e) {}
+  };
+
+  const handlePermanentDeleteBooth = async (id) => {
+    if (!window.confirm('এই বুথটি চিরতরে মুছে ফেলতে চান?')) return;
+    try {
+      await permanentDeleteBoothService(id);
+      alert('বুথ চিরতরে ডিলিট করা হয়েছে!');
+    } catch (e) {}
+  };
+
+  const handleRestoreExpense = async (id) => {
+    try {
+      await setExpenseDeletedStatus(id, false);
+      alert('খরচ সফলভাবে পুনরুদ্ধার করা হয়েছে!');
+    } catch (e) {}
+  };
+
+  const handlePermanentDeleteExpense = async (id) => {
+    if (!window.confirm('এই খরচের রেকর্ডটি চিরতরে মুছে ফেলতে চান?')) return;
+    try {
+      await permanentDeleteExpenseService(id);
+      alert('খরচ চিরতরে ডিলিট করা হয়েছে!');
+    } catch (e) {}
+  };
+
+  const handleRestoreSalary = async (id) => {
+    try {
+      await setSalaryDeletedStatus(id, false);
+      alert('বেতনের রেকর্ড পুনরুদ্ধার করা হয়েছে!');
+    } catch (e) {}
+  };
+
+  const handlePermanentDeleteSalary = async (id) => {
+    if (!window.confirm('এই বেতনের রেকর্ডটি চিরতরে মুছে ফেলতে চান?')) return;
+    try {
+      await permanentDeleteSalaryService(id);
+      alert('বেতনের রেকর্ড চিরতরে ডিলিট করা হয়েছে!');
+    } catch (e) {}
+  };
+
+  const handleDeleteSale = async (id) => {
+    if (window.confirm('এই বিক্রয়ের রেকর্ডটি রিসাইকেল বিনে পাঠাতে চান?')) {
+      try {
+        await setSaleDeletedStatus(id, true);
+      } catch (error) {
+        console.error(error);
+      }
+    }
+  };
+
+  const handleRestoreSale = async (id) => {
+    try {
+      await setSaleDeletedStatus(id, false);
+      alert('বিক্রয়ের রেকর্ড সফলভাবে পুনরুদ্ধার করা হয়েছে!');
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const handlePermanentDeleteSale = async (id) => {
+    if (!window.confirm('এই বিক্রয়ের রেকর্ডটি চিরতরে মুছে ফেলতে চান?')) return;
+    try {
+      await permanentDeleteSaleService(id);
+      alert('বিক্রয়ের রেকর্ড চিরতরে ডিলিট করা হয়েছে!');
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const handleAddBooth = async (e) => {
+    e.preventDefault();
+    if (isAddingBooth) return;
+    if (!newBoothNo || !newTenant || !newRent) return alert('সকল ঘর পূরণ করুন!');
+    setIsAddingBooth(true);
+    try {
+      await addBoothService({
+        counterName: newCounter,
+        boothNo: newBoothNo,
+        tenantName: newTenant,
+        rent: Number(newRent),
+        isDeleted: false
+      });
+      alert('নতুন বুথ ও ভাড়া যুক্ত হয়েছে!');
+      setNewBoothNo(''); setNewTenant(''); setNewRent('');
+    } catch (error) {
+      alert('বুথ যুক্ত করতে সমস্যা: ' + error.message);
+    } finally {
+      setIsAddingBooth(false);
+    }
+  };
+
+  const handleRentChange = async (id, newRentValue) => {
+    try {
+      await updateBoothRentService(id, Number(newRentValue));
+    } catch (error) {
+      console.error("ভাড়া আপডেট করতে সমস্যা:", error);
+    }
+  };
+
+  const handleDeleteBooth = async (id) => {
+    if (window.confirm('এই বুথ ভাড়া তালিকাটি রিসাইকেল বিনে পাঠাতে চান?')) {
+      try {
+        await setBoothDeletedStatus(id, true);
+      } catch (error) {}
+    }
+  };
+
+  const handleAddExpense = async (e) => {
+    e.preventDefault();
+    if (isAddingExpense) return;
+    if (!expenseTitle || !expenseAmount || !expenseDate || !expenseCounter) return alert('সকল ঘর পূরণ করুন!');
+    setIsAddingExpense(true);
+    try {
+      const formattedDate = formatDateToCustom(expenseDate);
+      await addExpenseService({
+        counterName: expenseCounter,
+        title: expenseTitle,
+        description: expenseTitle,
+        amount: Number(expenseAmount) || 0,
+        date: formattedDate,
+        addedBy: 'admin',
+        expenseType: 'admin',
+        isDeleted: false
+      });
+      setExpenseTitle('');
+      setExpenseAmount('');
+      setExpenseDate(new Date().toISOString().split('T')[0]);
+      alert('খরচ সফলভাবে যুক্ত করা হয়েছে!');
+    } catch (error) {
+      alert('খরচ যোগ করতে সমস্যা: ' + error.message);
+    } finally {
+      setIsAddingExpense(false);
+    }
+  };
+
+  const handleDeleteExpense = async (id) => {
+    if (window.confirm('এই খরচের রেকর্ডটি রিসাইকেল বিনে পাঠাতে চান?')) {
+      try {
+        await setExpenseDeletedStatus(id, true);
+      } catch (error) {}
+    }
+  };
+
+  const calculateSalaryDetails = (basic, daysInMonth, absentDays, advance) => {
+    const b = Number(basic) || 0;
+    const dim = Number(daysInMonth) || 30;
+    const ad = Number(absentDays) || 0;
+    const adv = Number(advance) || 0;
+
+    const perDaySalary = dim > 0 ? b / dim : 0;
+    const deduction = Number((ad * perDaySalary).toFixed(2));
+    const total = Number((b - deduction - adv).toFixed(2));
+
+    return { deduction, total };
+  };
+
+  const handleSalaryInputChange = (e) => {
+    const { name, value } = e.target;
+    let updatedForm = { ...salaryForm, [name]: value };
+
+    if (['basicSalary', 'daysInMonth', 'absentDays', 'advanceSalary'].includes(name)) {
+      const { deduction, total } = calculateSalaryDetails(
+        updatedForm.basicSalary,
+        updatedForm.daysInMonth,
+        updatedForm.absentDays,
+        updatedForm.advanceSalary
+      );
+      updatedForm.unpaidLeaveDeduction = deduction;
+      updatedForm.totalPayable = total;
+    }
+
+    setSalaryForm(updatedForm);
+  };
+
+  const handleSaveSalary = async (e) => {
+    e.preventDefault();
+    if (isSavingSalary) return;
+    if (!salaryForm.staffName || !salaryForm.staffId || !salaryForm.basicSalary) {
+      return alert('দয়া করে প্রয়োজনীয় ঘরগুলো পূরণ করুন!');
+    }
+    setIsSavingSalary(true);
+    try {
+      await addSalaryService({
+        ...salaryForm,
+        basicSalary: Number(salaryForm.basicSalary) || 0,
+        absentDays: Number(salaryForm.absentDays) || 0,
+        unpaidLeaveDeduction: Number(salaryForm.unpaidLeaveDeduction) || 0,
+        advanceSalary: Number(salaryForm.advanceSalary) || 0,
+        totalPayable: Number(salaryForm.totalPayable) || 0,
+        isDeleted: false
+      });
+      alert('বেতনের রেকর্ড সফলভাবে সেভ করা হয়েছে!');
+      setSalaryForm({
+        month: selectedMonth,
+        staffName: '',
+        branch: countersList[0] || '',
+        staffId: '',
+        designation: '',
+        transportName: 'একতা ট্রান্সপোর্ট',
+        basicSalary: '',
+        daysInMonth: '31',
+        absentDays: '0',
+        unpaidLeaveDeduction: '0',
+        advanceSalary: '0',
+        totalPayable: '',
+        paymentStatus: 'অপরিশোধ'
+      });
+    } catch (error) {
+      alert('বেতন সেভ করতে সমস্যা: ' + error.message);
+    } finally {
+      setIsSavingSalary(false);
+    }
+  };
+
+  const handleDeleteSalary = async (id) => {
+    if (window.confirm('এই বেতনের রেকর্ডটি রিসাইকেল বিনে পাঠাতে চান?')) {
+      try {
+        await setSalaryDeletedStatus(id, true);
+      } catch (error) {}
+    }
+  };
+
+  const activeStaffs = Object.keys(staffDataMap || {}).filter(email => {
+    if (email === 'admin@aj.com') return false;
+    const staff = staffDataMap[email];
+    if (!staff || staff.isDeleted) return false;
+    return staff.name || staff.category || email.includes('@');
+  });
+
+  const trashedStaffs = Object.keys(staffDataMap || {}).filter(email => {
+    if (email === 'admin@aj.com') return false;
+    const staff = staffDataMap[email];
+    if (!staff || !staff.isDeleted) return false;
+    return staff.name || staff.category || email.includes('@');
+  });
+
+  const activeBooths = booths.filter(item => !item.isDeleted);
+  const trashedBooths = booths.filter(item => item.isDeleted);
+
+  const activeSales = sales.filter(item => !item.isDeleted);
+  const trashedSales = sales.filter(item => item.isDeleted);
+
+  const activeExpenses = expenses.filter(item => !item.isDeleted);
+  const trashedExpenses = expenses.filter(item => item.isDeleted);
+
+  const activeSalaries = salaries.filter(item => !item.isDeleted);
+  const trashedSalaries = salaries.filter(item => item.isDeleted);
+
+  const trashedCounters = counters.filter(c => c.isDeleted);
+
+  const getMappedCounterName = (s) => {
+    if (!s) return "অনির্দিষ্ট/অন্যান্য কাউন্টার";
+
+    const staffEmail = (s.staffId || s.email || s.sellerEmail || s.addedBy || s.staffEmail || '').trim().toLowerCase();
+    
+    if (staffEmail && staffDataMap) {
+      const matchedKey = Object.keys(staffDataMap).find(k => k.toLowerCase() === staffEmail);
+      if (matchedKey && staffDataMap[matchedKey]?.branch) {
+        const branch = staffDataMap[matchedKey].branch.trim();
+        
+        const exactMatch = countersList.find(c => c.trim().toLowerCase() === branch.toLowerCase());
+        if (exactMatch) return exactMatch;
+
+        for (const c of countersList) {
+          if (c.toLowerCase().includes(branch.toLowerCase()) || branch.toLowerCase().includes(c.toLowerCase())) {
+            return c;
+          }
+        }
+        
+        return "অনির্দিষ্ট/অন্যান্য কাউন্টার";
+      }
+    }
+
+    const rawCounter = (s.counterName || s.branch || s.counter || s.transportName || s.transport || '').trim();
+    for (const c of countersList) {
+      if (rawCounter && (c.toLowerCase().includes(rawCounter.toLowerCase()) || rawCounter.toLowerCase().includes(c.toLowerCase()))) {
+        return c;
+      }
+    }
+
+    return "অনির্দিষ্ট/অন্যান্য কাউন্টার"; 
+  };
+
+  const currentMonthSales = activeSales.filter(item => {
+    if (!matchMonth(item.date || item.timestamp, selectedMonth)) return false;
+    const seller = (item.staffId || item.addedBy || item.sellerEmail || item.email || item.staffEmail || '').toLowerCase();
+    if (seller === 'admin@aj.com') return false; 
+    return true;
+  });
+
+  const currentMonthExpenses = activeExpenses.filter(item => matchMonth(item.date, selectedMonth));
+  const currentMonthSalaries = activeSalaries.filter(item => item.month === selectedMonth);
+
+  const totalTicketsIncome = currentMonthSales.reduce((sum, item) => {
+    const val = Number(item.amount || item.totalFare || item.fare || item.price || item.ticketPrice || item.cost || item.total || 0);
+    return sum + val;
+  }, 0);
+
+  const totalRent = activeBooths.reduce((sum, item) => sum + (Number(item.rent) || 0), 0);
+  const totalExpense = currentMonthExpenses.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+  const totalSalariesExpense = currentMonthSalaries.reduce((sum, item) => sum + (Number(item.totalPayable) || 0), 0);
+  
+  const netIncome = totalTicketsIncome + totalRent - totalExpense - totalSalariesExpense;
+
+  const handleDownloadSummaryPDF = () => {
+    const element = document.getElementById('economic-summary-box');
+    const executePdfDownload = (el) => {
+      const options = {
+        margin:       10,
+        filename:     `economic-summary-${selectedMonth}.pdf`,
+        image:        { type: 'jpeg', quality: 0.98 },
+        html2canvas:  { scale: 2, useCORS: true },
+        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      };
+      window.html2pdf().from(el).set(options).save();
+    };
+
+    if (!window.html2pdf) {
+      const script = document.createElement('script');
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+      script.onload = () => executePdfDownload(element);
+      document.body.appendChild(script);
+    } else {
+      executePdfDownload(element);
+    }
+  };
+
+  const handleAutoLoadPreviousMonthSalaries = async () => {
+    const prevMonth = prompt("কোন মাসের ডাটা কপি করতে চান? যেমন: (July 26)");
+    if (!prevMonth) return;
+    const targetMonth = prompt("নতুন কোন মাসের জন্য শিট তৈরি করতে চান? যেমন: (August 26)", selectedMonth);
+    if (!targetMonth) return;
+
+    const prevRecords = activeSalaries.filter(s => s.month === prevMonth);
+    if (prevRecords.length === 0) {
+      return alert(`${prevMonth} এ কোনো বেতনের রেকর্ড পাওয়া যায়নি!`);
+    }
+
+    if (!window.confirm(`${prevMonth} এর ${prevRecords.length} জন স্টাফের ডাটা দিয়ে ${targetMonth} মাসের শিট তৈরি করতে চান?`)) return;
+
+    try {
+      for (let rec of prevRecords) {
+        await addSalaryService({
+          month: targetMonth,
+          staffName: rec.staffName || '',
+          branch: countersList.includes(rec.branch) ? rec.branch : countersList[0],
+          staffId: rec.staffId || '',
+          designation: rec.designation || '',
+          transportName: 'একতা ট্রান্সপোর্ট',
+          basicSalary: Number(rec.basicSalary) || 0,
+          daysInMonth: rec.daysInMonth || '31',
+          absentDays: '0',
+          unpaidLeaveDeduction: '0',
+          advanceSalary: Number(rec.advanceSalary) || 0,
+          totalPayable: Number(rec.basicSalary) || 0,
+          paymentStatus: 'অপরিশোধ',
+          isDeleted: false
+        });
+      }
+      setSelectedMonth(targetMonth);
+      setSalaryForm(prev => ({ ...prev, month: targetMonth }));
+      alert(`${targetMonth} এর জন্য সফলভাবে স্টাফদের বেতন শিট জেনারেট করা হয়েছে!`);
+    } catch (error) {
+      alert('অটো-লোড করতে সমস্যা: ' + error.message);
+    }
+  };
+
+  const handlePrintReport = () => {
+    window.print();
+  };
+
+  return (
+    <div style={{ backgroundColor: '#0f172a', padding: '30px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.3)', border: '1px solid #334155', color: '#f8fafc', fontFamily: "'Hind Siliguri', 'Noto Sans Bengali', sans-serif" }}>
+      
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Noto+Sans+Bengali:wght@400;500;600;700&display=swap');
+
+        /* Hide number input spin arrows */
+        input[type=number]::-webkit-outer-spin-button,
+        input[type=number]::-webkit-inner-spin-button {
+          -webkit-appearance: none;
+          margin: 0;
+        }
+        input[type=number] {
+          -moz-appearance: textfield;
+        }
+
+        @media print {
+          button, select, input, textarea, form, .no-print {
+            display: none !important;
+          }
+          body {
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+            background-color: #ffffff !important;
+          }
+          div {
+            box-shadow: none !important;
+            border: none !important;
+            color: #000 !important;
+          }
+        }
+      `}</style>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px', flexWrap: 'wrap', gap: '15px' }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: '22px', fontWeight: '700', color: '#f8fafc' }}>
+            👑 অ্যাডমিন কন্ট্রোল প্যানেল (কাউন্টার ও মাস ভিত্তিক হিসাব)
+          </h2>
+          <p style={{ margin: '6px 0 0', fontSize: '13px', color: '#94a3b8' }}>
+            নির্বাচিত মাস: <strong style={{ color: '#60a5fa' }}>{selectedMonth}</strong> অনুযায়ী সকল হিসাব দেখানো হচ্ছে
+          </p>
+        </div>
+        <button 
+          onClick={handlePrintReport}
+          style={{ padding: '10px 18px', backgroundColor: '#334155', color: '#fff', border: '1px solid #475569', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          🖨️ হিসাবের রিপোর্ট প্রিন্ট / PDF সেভ করুন
+        </button>
+      </div>
+
+      <div style={{ backgroundColor: '#1e293b', borderRadius: '12px', border: '1px solid #065f46', marginBottom: '25px', overflow: 'hidden' }}>
+        <div 
+          onClick={() => setIsCounterSectionOpen(prev => !prev)}
+          style={{ padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', backgroundColor: '#065f46', userSelect: 'none' }}
+        >
+          <h3 style={{ margin: 0, fontSize: '15px', fontWeight: '700', color: '#ffffff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span>{isCounterSectionOpen ? '▼' : '▶'}</span>
+            ➕ নতুন ব্রাঞ্চ বা কাউন্টার ডায়নামিকালি যোগ, এডিট ও ডিলিট করুন (ফায়ারবেস যুক্ত)
+          </h3>
+          <button 
+            type="button" 
+            style={{ fontSize: '12px', color: '#ffffff', fontWeight: '600', backgroundColor: '#047857', border: '1px solid #10b981', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer' }}
+          >
+            {isCounterSectionOpen ? 'ড্রপডাউন বন্ধ করুন ▴' : 'ড্রপডাউন খুলুন ▾'}
+          </button>
+        </div>
+
+        {isCounterSectionOpen && (
+          <div style={{ padding: '16px 20px' }}>
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '15px' }}>
+              <input 
+                type="text" 
+                placeholder="নতুন কাউন্টারের নাম লিখুন (যেমন: গুলশান কাউন্টার)" 
+                value={newDynamicCounterInput}
+                onChange={(e) => setNewDynamicCounterInput(e.target.value)}
+                style={{ flex: 1, minWidth: '250px', padding: '10px 14px', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#0f172a', color: '#ffffff', outline: 'none' }}
+              />
+              <button 
+                type="button" 
+                onClick={handleAddNewCounter}
+                disabled={isAddingCounter}
+                style={{ padding: '10px 20px', backgroundColor: isAddingCounter ? '#64748b' : '#16a34a', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '600', cursor: isAddingCounter ? 'not-allowed' : 'pointer' }}
+              >
+                {isAddingCounter ? 'জমা হচ্ছে...' : 'কাউন্টার যুক্ত করুন'}
+              </button>
+            </div>
+
+            <div style={{ backgroundColor: '#0f172a', padding: '12px', borderRadius: '8px', border: '1px solid #334155' }}>
+              <h4 style={{ margin: '0 0 8px', fontSize: '13px', color: '#34d399' }}>বর্তমান কাউন্টারসমূহ তালিকা:</h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {counters.filter(c => !c.isDeleted).map((cObj, idx) => {
+                  const cName = cObj.name || cObj;
+                  const cId = cObj.id;
+                  return (
+                    <div key={cId || cName} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', backgroundColor: '#1e293b', borderRadius: '6px', border: '1px solid #334155' }}>
+                      {editingCounterId === cId ? (
+                        <div style={{ display: 'flex', gap: '8px', flex: 1, marginRight: '10px' }}>
+                          <input 
+                            type="text" 
+                            value={editedCounterName} 
+                            onChange={(e) => setEditedCounterName(e.target.value)}
+                            style={{ flex: 1, padding: '6px 10px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: '#ffffff' }}
+                          />
+                          <button 
+                            onClick={() => handleSaveCounterEdit(cId)}
+                            style={{ padding: '6px 12px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}
+                          >
+                            সেভ
+                          </button>
+                          <button 
+                            onClick={() => setEditingCounterId(null)}
+                            style={{ padding: '6px 12px', backgroundColor: '#64748b', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}
+                          >
+                            বাতিল
+                          </button>
+                        </div>
+                      ) : (
+                        <span style={{ fontSize: '13px', fontWeight: '600', color: '#f8fafc' }}>{idx + 1}. {cName}</span>
+                      )}
+
+                      {editingCounterId !== cId && (
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          <button 
+                            onClick={() => handleEditCounterClick(cObj)}
+                            style={{ padding: '5px 10px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}
+                          >
+                            এডিট
+                          </button>
+                          <button 
+                            onClick={() => handleDeleteCounter(cObj)}
+                            style={{ padding: '5px 10px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}
+                          >
+                            ডিলিট
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', marginBottom: '30px', borderBottom: '2px solid #334155', paddingBottom: '15px', flexWrap: 'wrap' }}>
+        <button 
+          onClick={() => setActiveTab('staff')}
+          style={{ padding: '10px 22px', backgroundColor: activeTab === 'staff' ? '#2563eb' : '#1e293b', color: activeTab === 'staff' ? '#fff' : '#cbd5e1', border: '1px solid #334155', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', fontSize: '14px' }}>
+          👥 স্টাফ ও বাস ম্যানেজমেন্ট
+        </button>
+        <button 
+          onClick={() => setActiveTab('booth')}
+          style={{ padding: '10px 22px', backgroundColor: activeTab === 'booth' ? '#2563eb' : '#1e293b', color: activeTab === 'booth' ? '#fff' : '#cbd5e1', border: '1px solid #334155', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', fontSize: '14px' }}>
+          🏢 কাউন্টার ভিত্তিক হিসাব ও খরচ
+        </button>
+        <button 
+          onClick={() => setActiveTab('salary')}
+          style={{ padding: '10px 22px', backgroundColor: activeTab === 'salary' ? '#2563eb' : '#1e293b', color: activeTab === 'salary' ? '#fff' : '#cbd5e1', border: '1px solid #334155', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', fontSize: '14px' }}>
+          💰 স্টাফ বেতন শিট এন্ট্রি
+        </button>
+        <button 
+          onClick={() => setActiveTab('recycle')}
+          style={{ padding: '10px 22px', backgroundColor: activeTab === 'recycle' ? '#dc2626' : '#451a03', color: activeTab === 'recycle' ? '#fff' : '#fca5a5', border: '1px solid #7f1d1d', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', fontSize: '14px' }}>
+          🗑️ রিসাইকেল বিন ({trashedStaffs.length + trashedBooths.length + trashedExpenses.length + trashedSalaries.length + trashedSales.length + trashedCounters.length})
+        </button>
+      </div>
+
+      {activeTab === 'staff' && (
+        <div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '25px' }}>
+            <div style={{ backgroundColor: '#1e293b', padding: '24px', borderRadius: '12px', border: '1px solid #334155' }}>
+              <h3 style={{ margin: '0 0 16px', fontSize: '16px', fontWeight: '700', color: '#f8fafc' }}>
+                ➕ নতুন স্টাফ বা ম্যানেজার যোগ করুন
+              </h3>
+              <form onSubmit={handleAddStaff} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div>
+                  <label style={{ fontSize: '13px', fontWeight: '600', color: '#cbd5e1', display: 'block', marginBottom: '6px' }}>স্টাফের নাম</label>
+                  <input type="text" placeholder="যেমন: রহিম" value={newName} onChange={e => setNewName(e.target.value)} style={{ width: '100%', padding: '11px 14px', borderRadius: '10px', border: '1px solid #334155', backgroundColor: '#0f172a', color: '#ffffff', boxSizing: 'border-box' }} required />
+                </div>
+                <div>
+                  <label style={{ fontSize: '13px', fontWeight: '600', color: '#cbd5e1', display: 'block', marginBottom: '6px' }}>স্টাফের ইমেইল (লগইন আইডি)</label>
+                  <input type="email" placeholder="staff@aj.com" value={newEmail} onChange={e => setNewEmail(e.target.value)} style={{ width: '100%', padding: '11px 14px', borderRadius: '10px', border: '1px solid #334155', backgroundColor: '#0f172a', color: '#ffffff', boxSizing: 'border-box' }} required />
+                </div>
+                <div>
+                  <label style={{ fontSize: '13px', fontWeight: '600', color: '#cbd5e1', display: 'block', marginBottom: '6px' }}>পাসওয়ার্ড</label>
+                  <input type="password" placeholder="কমপক্ষে ৬ ডিজিটের পাসওয়ার্ড" value={newPassword} onChange={e => setNewPassword(e.target.value)} style={{ width: '100%', padding: '11px 14px', borderRadius: '10px', border: '1px solid #334155', backgroundColor: '#0f172a', color: '#ffffff', boxSizing: 'border-box' }} required />
+                </div>
+                <div>
+                  <label style={{ fontSize: '13px', fontWeight: '600', color: '#cbd5e1', display: 'block', marginBottom: '6px' }}>স্টাফ ক্যাটাগরি</label>
+                  <select value={newCategory} onChange={e => setNewCategory(e.target.value)} style={{ width: '100%', padding: '11px 14px', borderRadius: '10px', border: '1px solid #334155', backgroundColor: '#0f172a', color: '#ffffff', boxSizing: 'border-box' }} required>
+                    <option value="counter" style={{ backgroundColor: '#0f172a', color: '#ffffff' }}>কাউন্টার স্টাফ</option>
+                    <option value="general" style={{ backgroundColor: '#0f172a', color: '#ffffff' }}>জেনারেল স্টাফ</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: '13px', fontWeight: '600', color: '#cbd5e1', display: 'block', marginBottom: '6px' }}>মূল কাউন্টার নির্ধারণ</label>
+                  <select value={newBranch} onChange={e => setNewBranch(e.target.value)} style={{ width: '100%', padding: '11px 14px', borderRadius: '10px', border: '1px solid #334155', backgroundColor: '#0f172a', color: '#ffffff', boxSizing: 'border-box' }} required>
+                    {countersList.map(c => <option key={c} value={c} style={{ backgroundColor: '#0f172a', color: '#ffffff' }}>{c}</option>)}
+                  </select>
+                </div>
+                {newCategory.toLowerCase() === 'counter' && (
+                  <div>
+                    <label style={{ fontSize: '13px', fontWeight: '600', color: '#cbd5e1', display: 'block', marginBottom: '6px' }}>বাসসমূহের তালিকা (কমা দিয়ে)</label>
+                    <input type="text" placeholder="বাস ১, বাস ২" value={newBuses} onChange={e => setNewBuses(e.target.value)} style={{ width: '100%', padding: '11px 14px', borderRadius: '10px', border: '1px solid #334155', backgroundColor: '#0f172a', color: '#ffffff', boxSizing: 'border-box' }} required={newCategory.toLowerCase() === 'counter'} />
+                  </div>
+                )}
+                <button type="submit" disabled={isAddingStaff} style={{ width: '100%', padding: '12px', backgroundColor: isAddingStaff ? '#64748b' : '#2563eb', color: '#fff', border: 'none', borderRadius: '10px', fontWeight: '600', cursor: isAddingStaff ? 'not-allowed' : 'pointer' }}>
+                  {isAddingStaff ? 'জমা হচ্ছে...' : 'নতুন স্টাফ যুক্ত করুন'}
+                </button>
+              </form>
+            </div>
+
+            <div style={{ backgroundColor: '#1e293b', padding: '24px', borderRadius: '12px', border: '1px solid #334155' }}>
+              <h3 style={{ margin: '0 0 16px', fontSize: '16px', fontWeight: '700', color: '#f8fafc' }}>
+                ✏️ স্টাফ এডিট ও কাউন্টার পরিবর্তন
+              </h3>
+              <form onSubmit={handleUpdateStaff} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div>
+                  <label style={{ fontSize: '13px', fontWeight: '600', color: '#cbd5e1', display: 'block', marginBottom: '6px' }}>স্টাফ সিলেক্ট করুন</label>
+                  <select value={selectedStaffEmail} onChange={e => setSelectedStaffEmail(e.target.value)} style={{ width: '100%', padding: '11px 14px', borderRadius: '10px', border: '1px solid #334155', backgroundColor: '#0f172a', color: '#ffffff', boxSizing: 'border-box' }} required>
+                    <option value="" style={{ backgroundColor: '#0f172a', color: '#ffffff' }}>-- কাউন্টার/ব্রাঞ্চ অনুযায়ী স্টাফ সিলেক্ট করুন --</option>
+                    {(() => {
+                      const matchedStaffEmails = new Set();
+                      const result = countersList.map(counter => {
+                        const staffInCounter = activeStaffs.filter(email => {
+                          const staffBranch = (staffDataMap[email]?.branch || '').trim().toLowerCase();
+                          return staffBranch === counter.trim().toLowerCase();
+                        });
+                        staffInCounter.forEach(email => matchedStaffEmails.add(email));
+                        if (staffInCounter.length === 0) return null;
+                        return (
+                          <optgroup key={counter} label={`📍 ${counter}`} style={{ backgroundColor: '#0f172a', color: '#ffffff' }}>
+                            {staffInCounter.map(email => (
+                              <option key={email} value={email} style={{ backgroundColor: '#0f172a', color: '#ffffff' }}>
+                                {staffDataMap[email]?.name || email} ({email})
+                              </option>
+                            ))}
+                          </optgroup>
+                        );
+                      });
+
+                      const unassignedStaffs = activeStaffs.filter(email => !matchedStaffEmails.has(email));
+                      if (unassignedStaffs.length > 0) {
+                        result.push(
+                          <optgroup key="unassigned" label="📍 অন্যান্য / আনলિસ્টেড ব্রাঞ্চ" style={{ backgroundColor: '#0f172a', color: '#ffffff' }}>
+                            {unassignedStaffs.map(email => (
+                              <option key={email} value={email} style={{ backgroundColor: '#0f172a', color: '#ffffff' }}>
+                                {staffDataMap[email]?.name || email} ({email}) [{staffDataMap[email]?.branch || 'ব্রাঞ্চ নেই'}]
+                              </option>
+                            ))}
+                          </optgroup>
+                        );
+                      }
+                      return result;
+                    })()}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: '13px', fontWeight: '600', color: '#cbd5e1', display: 'block', marginBottom: '6px' }}>স্টাফ ক্যাটাগরি</label>
+                  <select value={editCategory} onChange={e => setEditCategory(e.target.value)} style={{ width: '100%', padding: '11px 14px', borderRadius: '10px', border: '1px solid #334155', backgroundColor: '#0f172a', color: '#ffffff', boxSizing: 'border-box' }} required>
+                    <option value="counter" style={{ backgroundColor: '#0f172a', color: '#ffffff' }}>কাউন্টার স্টাফ</option>
+                    <option value="general" style={{ backgroundColor: '#0f172a', color: '#ffffff' }}>জেনারেল স্টাফ</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: '13px', fontWeight: '600', color: '#cbd5e1', display: 'block', marginBottom: '6px' }}>মূল কাউন্টার</label>
+                  <select value={editBranch} onChange={e => setEditBranch(e.target.value)} style={{ width: '100%', padding: '11px 14px', borderRadius: '10px', border: '1px solid #334155', backgroundColor: '#0f172a', color: '#ffffff', boxSizing: 'border-box' }} required>
+                    {countersList.map(c => <option key={c} value={c} style={{ backgroundColor: '#0f172a', color: '#ffffff' }}>{c}</option>)}
+                  </select>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <div>
+                    <label style={{ fontSize: '12px', fontWeight: '600', color: '#cbd5e1', display: 'block', marginBottom: '4px' }}>মূল বেতন (৳)</label>
+                    <input type="number" value={editBasicSalary} onChange={e => setEditBasicSalary(e.target.value)} onWheel={(e) => e.target.blur()} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#0f172a', color: '#ffffff', boxSizing: 'border-box' }} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '12px', fontWeight: '600', color: '#cbd5e1', display: 'block', marginBottom: '4px' }}>অগ্রিম বেতন (৳)</label>
+                    <input type="number" value={editAdvanceSalary} onChange={e => setEditAdvanceSalary(e.target.value)} onWheel={(e) => e.target.blur()} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#0f172a', color: '#ffffff', boxSizing: 'border-box' }} />
+                  </div>
+                </div>
+                {editCategory.toLowerCase() === 'counter' && (
+                  <div>
+                    <label style={{ fontSize: '13px', fontWeight: '600', color: '#cbd5e1', display: 'block', marginBottom: '6px' }}>বাসের তালিকা</label>
+                    <textarea rows={2} value={editBuses} onChange={e => setEditBuses(e.target.value)} style={{ width: '100%', padding: '11px 14px', borderRadius: '10px', border: '1px solid #334155', backgroundColor: '#0f172a', color: '#ffffff', boxSizing: 'border-box' }} />
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button type="submit" disabled={isUpdatingStaff} style={{ flex: 1, padding: '12px', backgroundColor: isUpdatingStaff ? '#64748b' : '#16a34a', color: '#fff', border: 'none', borderRadius: '10px', fontWeight: '600', cursor: isUpdatingStaff ? 'not-allowed' : 'pointer' }}>
+                    {isUpdatingStaff ? 'জমা হচ্ছে...' : 'আপডেট করুন'}
+                  </button>
+                  <button type="button" onClick={handleDeleteStaff} style={{ padding: '12px 16px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '10px', fontWeight: '600', cursor: 'pointer' }}>
+                    রিসাইকেল বিনে পাঠান
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'recycle' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#fca5a5', margin: 0 }}>🗑️ রিসাইকেল বিন (রিস্টোর বা স্থায়ী ডিলিট করুন - ফায়ারবেস ব্যাকএন্ড)</h3>
+
+          <div style={{ border: '1px solid #7f1d1d', borderRadius: '12px', overflow: 'hidden', backgroundColor: '#451a03' }}>
+            <div style={{ backgroundColor: '#7f1d1d', padding: '14px 18px', fontWeight: 'bold', color: '#fca5a5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>📍 ডিলিটকৃত কাউন্টারসমূহ</span>
+              <span style={{ fontSize: '12px', backgroundColor: '#991b1b', padding: '4px 8px', borderRadius: '6px', color: '#fee2e2' }}>({trashedCounters.length})</span>
+            </div>
+            <div style={{ padding: '15px' }}>
+              {trashedCounters.length === 0 ? <p style={{ fontSize: '13px', color: '#cbd5e1', margin: 0 }}>কোনো ডিলিটকৃত কাউন্টার নেই।</p> : (
+                <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '13px', color: '#f8fafc' }}>
+                  {trashedCounters.map(cObj => (
+                    <li key={cObj.id} style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>{cObj.name}</span>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button onClick={() => handleRestoreCounter(cObj)} style={{ padding: '4px 10px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: '600' }}>রিস্টোর</button>
+                        <button onClick={() => handlePermanentDeleteCounter(cObj)} style={{ padding: '4px 10px', backgroundColor: '#991b1b', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: '600' }}>স্থায়ী ডিলিট</button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+
+          <div style={{ border: '1px solid #7f1d1d', borderRadius: '12px', overflow: 'hidden', backgroundColor: '#451a03' }}>
+            <div style={{ backgroundColor: '#7f1d1d', padding: '14px 18px', fontWeight: 'bold', color: '#fca5a5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>👥 ডিলিটকৃত স্টাফগণ</span>
+              <span style={{ fontSize: '12px', backgroundColor: '#991b1b', padding: '4px 8px', borderRadius: '6px', color: '#fee2e2' }}>({trashedStaffs.length})</span>
+            </div>
+            <div style={{ padding: '15px' }}>
+              {trashedStaffs.length === 0 ? <p style={{ fontSize: '13px', color: '#cbd5e1', margin: 0 }}>কোনো ডিলিটকৃত স্টাফ নেই।</p> : (
+                <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '13px', color: '#f8fafc' }}>
+                  {trashedStaffs.map(email => (
+                    <li key={email} style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>{staffDataMap[email]?.name || email} ({email})</span>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button onClick={() => handleRestoreStaff(email)} style={{ padding: '4px 10px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: '600' }}>রিস্টোর</button>
+                        <button onClick={() => handlePermanentDeleteStaff(email)} style={{ padding: '4px 10px', backgroundColor: '#991b1b', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: '600' }}>স্থায়ী ডিলিট</button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+
+          <div style={{ border: '1px solid #7f1d1d', borderRadius: '12px', overflow: 'hidden', backgroundColor: '#451a03' }}>
+            <div style={{ backgroundColor: '#7f1d1d', padding: '14px 18px', fontWeight: 'bold', color: '#fca5a5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>🎫 ডিলিটকৃত বিক্রয় রেকর্ডসমূহ</span>
+              <span style={{ fontSize: '12px', backgroundColor: '#991b1b', padding: '4px 8px', borderRadius: '6px', color: '#fee2e2' }}>({trashedSales.length})</span>
+            </div>
+            <div style={{ padding: '15px' }}>
+              {trashedSales.length === 0 ? <p style={{ fontSize: '13px', color: '#cbd5e1', margin: 0 }}>কোনো ডিলিটকৃত বিক্রয় রেকর্ড নেই।</p> : (
+                <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '13px', color: '#f8fafc' }}>
+                  {trashedSales.map(s => (
+                    <li key={s.id} style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>{formatDateToCustom(s.date || s.timestamp)} — ৳{s.amount || s.totalFare || 0} [{s.addedBy || s.sellerEmail || 'N/A'}]</span>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button onClick={() => handleRestoreSale(s.id)} style={{ padding: '4px 10px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: '600' }}>রিস্টোর</button>
+                        <button onClick={() => handlePermanentDeleteSale(s.id)} style={{ padding: '4px 10px', backgroundColor: '#991b1b', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: '600' }}>স্থায়ী ডিলিট</button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+
+          <div style={{ border: '1px solid #7f1d1d', borderRadius: '12px', overflow: 'hidden', backgroundColor: '#451a03' }}>
+            <div style={{ backgroundColor: '#7f1d1d', padding: '14px 18px', fontWeight: 'bold', color: '#fca5a5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>🏢 ডিলিটকৃত বুথ ও ভাড়া</span>
+              <span style={{ fontSize: '12px', backgroundColor: '#991b1b', padding: '4px 8px', borderRadius: '6px', color: '#fee2e2' }}>({trashedBooths.length})</span>
+            </div>
+            <div style={{ padding: '15px' }}>
+              {trashedBooths.length === 0 ? <p style={{ fontSize: '13px', color: '#cbd5e1', margin: 0 }}>কোনো ডিলিটকৃত বুথ নেই।</p> : (
+                <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '13px', color: '#f8fafc' }}>
+                  {trashedBooths.map(b => (
+                    <li key={b.id} style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>{b.counterName} — {b.boothNo} ({b.tenantName}) — ৳{b.rent}</span>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button onClick={() => handleRestoreBooth(b.id)} style={{ padding: '4px 10px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: '600' }}>রিস্টোর</button>
+                        <button onClick={() => handlePermanentDeleteBooth(b.id)} style={{ padding: '4px 10px', backgroundColor: '#991b1b', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: '600' }}>স্থায়ী ডিলিট</button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+
+          <div style={{ border: '1px solid #7f1d1d', borderRadius: '12px', overflow: 'hidden', backgroundColor: '#451a03' }}>
+            <div style={{ backgroundColor: '#7f1d1d', padding: '14px 18px', fontWeight: 'bold', color: '#fca5a5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>💸 ডিলিটকৃত খরচসমূহ</span>
+              <span style={{ fontSize: '12px', backgroundColor: '#991b1b', padding: '4px 8px', borderRadius: '6px', color: '#fee2e2' }}>({trashedExpenses.length})</span>
+            </div>
+            <div style={{ padding: '15px' }}>
+              {trashedExpenses.length === 0 ? <p style={{ fontSize: '13px', color: '#cbd5e1', margin: 0 }}>কোনো ডিলিটকৃত খরচ নেই।</p> : (
+                <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '13px', color: '#f8fafc' }}>
+                  {trashedExpenses.map(e => (
+                    <li key={e.id} style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>{e.counterName} — {e.title || e.description} (৳{e.amount}) [{e.date}]</span>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button onClick={() => handleRestoreExpense(e.id)} style={{ padding: '4px 10px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: '600' }}>রিস্টোর</button>
+                        <button onClick={() => handlePermanentDeleteExpense(e.id)} style={{ padding: '4px 10px', backgroundColor: '#991b1b', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: '600' }}>স্থায়ী ডিলিট</button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+
+          <div style={{ border: '1px solid #7f1d1d', borderRadius: '12px', overflow: 'hidden', backgroundColor: '#451a03' }}>
+            <div style={{ backgroundColor: '#7f1d1d', padding: '14px 18px', fontWeight: 'bold', color: '#fca5a5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>💰 ডিলিটকৃত বেতনের রেকর্ড</span>
+              <span style={{ fontSize: '12px', backgroundColor: '#991b1b', padding: '4px 8px', borderRadius: '6px', color: '#fee2e2' }}>({trashedSalaries.length})</span>
+            </div>
+            <div style={{ padding: '15px' }}>
+              {trashedSalaries.length === 0 ? <p style={{ fontSize: '13px', color: '#cbd5e1', margin: 0 }}>কোনো ডিলিটকৃত বেতনের রেকর্ড নেই।</p> : (
+                <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '13px', color: '#f8fafc' }}>
+                  {trashedSalaries.map(s => (
+                    <li key={s.id} style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>{s.month} — {s.staffName} ({s.staffId}) — ৳{s.totalPayable}</span>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button onClick={() => handleRestoreSalary(s.id)} style={{ padding: '4px 10px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: '600' }}>রিস্টোর</button>
+                        <button onClick={() => handlePermanentDeleteSalary(s.id)} style={{ padding: '4px 10px', backgroundColor: '#991b1b', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: '600' }}>স্থায়ী ডিলিট</button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'booth' && (
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '15px', background: '#1e293b', padding: '12px 18px', borderRadius: '10px', border: '1px solid #334155', marginBottom: '20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <label htmlFor="boothMonthSelect" style={{ fontWeight: '700', color: '#60a5fa', fontSize: '14px' }}>হিসাবের মাস নির্বাচন:</label>
+              <select 
+                id="boothMonthSelect" 
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: '#ffffff', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', outline: 'none' }}
+              >
+                {generateMonthOptions().map(m => (
+                  <option key={m} value={m} style={{ backgroundColor: '#0f172a', color: '#ffffff' }}>{m}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px', marginBottom: '25px' }}>
+            <div style={{ backgroundColor: '#1e293b', padding: '20px', borderRadius: '12px', border: '1px solid #0284c7' }}>
+              <h3 style={{ margin: '0 0 14px', fontSize: '16px', fontWeight: '700', color: '#38bdf8' }}>
+                ➕ নতুন বুথ বা দোকান ভাড়া যোগ করুন
+              </h3>
+              <form onSubmit={handleAddBooth} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: '600', color: '#cbd5e1', display: 'block', marginBottom: '4px' }}>কাউন্টার সিলেক্ট</label>
+                  <select value={newCounter} onChange={e => setNewCounter(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#0f172a', color: '#ffffff', fontWeight: 'bold' }} required>
+                    {countersList.map(c => <option key={c} value={c} style={{ backgroundColor: '#0f172a', color: '#ffffff' }}>{c}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: '600', color: '#cbd5e1', display: 'block', marginBottom: '4px' }}>বুথ নং</label>
+                  <input type="text" placeholder="যেমন: বুথ ১" value={newBoothNo} onChange={e => setNewBoothNo(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#0f172a', color: '#ffffff' }} required />
+                </div>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: '600', color: '#cbd5e1', display: 'block', marginBottom: '4px' }}>বুথ বা দোকানের নাম / ভাড়াগৃহীতা</label>
+                  <input type="text" placeholder="যেমন: সেন্টমার্টিন পরিবহন" value={newTenant} onChange={e => setNewTenant(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#0f172a', color: '#ffffff' }} required />
+                </div>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: '600', color: '#cbd5e1', display: 'block', marginBottom: '4px' }}>ভাড়ার পরিমাণ (৳)</label>
+                  <input type="number" placeholder="যেমন: ৫০০০" value={newRent} onChange={e => setNewRent(e.target.value)} onWheel={(e) => e.target.blur()} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#0f172a', color: '#ffffff' }} required />
+                </div>
+                <button type="submit" disabled={isAddingBooth} style={{ padding: '11px', backgroundColor: isAddingBooth ? '#64748b' : '#16a34a', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '600', cursor: isAddingBooth ? 'not-allowed' : 'pointer', marginTop: '4px' }}>
+                  {isAddingBooth ? 'জমা হচ্ছে...' : 'বুথ ভাড়া যোগ করুন'}
+                </button>
+              </form>
+            </div>
+
+            <div style={{ backgroundColor: '#1e293b', padding: '20px', borderRadius: '12px', border: '1px solid #dc2626' }}>
+              <h3 style={{ margin: '0 0 14px', fontSize: '16px', fontWeight: '700', color: '#f87171' }}>
+                ➕ নতুন খরচ এন্ট্রি করুন
+              </h3>
+              <form onSubmit={handleAddExpense} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: '600', color: '#cbd5e1', display: 'block', marginBottom: '4px' }}>কাউন্টার সিলেক্ট করুন</label>
+                  <select value={expenseCounter} onChange={e => setExpenseCounter(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#0f172a', color: '#ffffff', fontWeight: 'bold' }} required>
+                    {countersList.map(c => <option key={c} value={c} style={{ backgroundColor: '#0f172a', color: '#ffffff' }}>{c}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: '600', color: '#cbd5e1', display: 'block', marginBottom: '4px' }}>খরচের বিবরণ / শিরোনাম</label>
+                  <input type="text" placeholder="যেমন: বিদ্যুৎ বিল / অফিস খরচ" value={expenseTitle} onChange={e => setExpenseTitle(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#0f172a', color: '#ffffff' }} required />
+                </div>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: '600', color: '#cbd5e1', display: 'block', marginBottom: '4px' }}>পরিমাণ (৳)</label>
+                  <input type="number" placeholder="৳৫০০" value={expenseAmount} onChange={e => setExpenseAmount(e.target.value)} onWheel={(e) => e.target.blur()} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#0f172a', color: '#ffffff' }} required />
+                </div>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: '600', color: '#cbd5e1', display: 'block', marginBottom: '4px' }}>তারিখ</label>
+                  <input type="date" value={expenseDate} onChange={e => setExpenseDate(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#0f172a', color: '#ffffff' }} required />
+                </div>
+                <button type="submit" disabled={isAddingExpense} style={{ padding: '11px', backgroundColor: isAddingExpense ? '#64748b' : '#dc2626', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '600', cursor: isAddingExpense ? 'not-allowed' : 'pointer', marginTop: '4px' }}>
+                  {isAddingExpense ? 'জমা হচ্ছে...' : 'খরচ যোগ করুন'}
+                </button>
+              </form>
+            </div>
+          </div>
+
+          <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#f8fafc', marginBottom: '12px' }}>📋 কাউন্টার ভিত্তিক আর্থিক ও বিক্রয় রিপোর্ট ({selectedMonth})</h3>
+          
+          {ALL_REPORT_COUNTERS.map(counterName => {
+            const counterSales = currentMonthSales.filter(s => {
+              const mapped = getMappedCounterName(s);
+              return mapped === counterName;
+            });
+            
+            const counterTotalSales = counterSales.reduce((sum, item) => {
+              const val = Number(item.amount || item.totalFare || item.fare || item.price || item.ticketPrice || item.cost || item.total || 0);
+              return sum + val;
+            }, 0);
+
+            const counterBooths = activeBooths.filter(b => b.counterName === counterName);
+            const counterTotalRent = counterBooths.reduce((sum, b) => sum + (Number(b.rent) || 0), 0);
+
+            const counterExpenses = currentMonthExpenses.filter(e => {
+              const mapped = getMappedCounterName(e);
+              return mapped === counterName;
+            });
+            
+            const adminExpenses = counterExpenses.filter(e => e.expenseType === 'admin');
+            const branchExpenses = counterExpenses.filter(e => e.expenseType === 'branch' || !e.expenseType);
+
+            const counterTotalAdminExpense = adminExpenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+            const counterTotalBranchExpense = branchExpenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+
+            const counterSalaries = currentMonthSalaries.filter(s => s.branch === counterName);
+            const counterTotalSalary = counterSalaries.reduce((sum, s) => sum + (Number(s.totalPayable) || 0), 0);
+
+            const counterNet = counterTotalSales + counterTotalRent - counterTotalAdminExpense - counterTotalBranchExpense - counterTotalSalary;
+
+            const isOpen = !!openCounters[counterName];
+            const isUnassigned = counterName === "অনির্দিষ্ট/অন্যান্য কাউন্টার";
+
+            if (isUnassigned && counterSales.length === 0 && counterExpenses.length === 0) {
+              return null;
+            }
+
+            return (
+              <div key={counterName} style={{ marginBottom: '20px', border: isUnassigned ? '2px dashed #f59e0b' : '1px solid #334155', borderRadius: '10px', overflow: 'hidden', backgroundColor: isUnassigned ? '#451a03' : '#1e293b' }}>
+                <div 
+                  onClick={() => toggleCounterAccordion(counterName)}
+                  style={{ backgroundColor: isUnassigned ? '#78350f' : '#0f172a', padding: '14px 18px', fontWeight: 'bold', color: isUnassigned ? '#fde68a' : '#f8fafc', borderBottom: isOpen ? '1px solid #334155' : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#60a5fa' }}>{isOpen ? '▼' : '▶'}</span>
+                    <span>📍 {counterName} {isUnassigned && '(যাচাই করুন)'}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                    <span style={{ fontSize: '13px', color: '#38bdf8', fontWeight: '700' }}>
+                      নীট জমা: {counterNet.toLocaleString('bn-BD')} ৳
+                    </span>
+                    <span style={{ fontSize: '12px', color: '#cbd5e1', backgroundColor: '#334155', padding: '4px 8px', borderRadius: '6px' }}>
+                      {isOpen ? 'বন্ধ করুন' : 'বিস্তারিত দেখুন'}
+                    </span>
+                  </div>
+                </div>
+                
+                {isOpen && (
+                  <div style={{ padding: '15px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    <div>
+                      <h4 style={{ margin: '0 0 8px', fontSize: '14px', color: '#38bdf8' }}>১. কাউন্টার ও বাস অনুযায়ী মোট মাসিক হিসাব</h4>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#0f172a', padding: '10px 14px', borderRadius: '8px', border: '1px solid #334155' }}>
+                        <span style={{ fontSize: '14px', fontWeight: '700', color: '#38bdf8' }}>সর্বমোট টিকেট কমিশন:</span>
+                        <span style={{ fontSize: '15px', fontWeight: 'bold', color: '#38bdf8' }}>+{counterTotalSales.toLocaleString('bn-BD')} টাকা</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <h4 style={{ margin: '0 0 8px', fontSize: '14px', color: '#4ade80' }}>২. বুথ ও দোকান ভাড়া তালিকা</h4>
+                      {counterBooths.length === 0 ? (
+                        <p style={{ fontSize: '13px', color: '#94a3b8', fontStyle: 'italic', marginBottom: '10px' }}>এই কাউন্টারে কোনো বুথ ভাড়া নেই।</p>
+                      ) : (
+                        <div style={{ overflowX: 'auto', marginBottom: '10px' }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px', color: '#f8fafc' }}>
+                            <thead>
+                              <tr style={{ backgroundColor: '#064e3b', color: '#4ade80' }}>
+                                <th style={{ padding: '8px', border: '1px solid #065f46' }}>বুথ নং</th>
+                                <th style={{ padding: '8px', border: '1px solid #065f46' }}>ভাড়াগ্রহীতা</th>
+                                <th style={{ padding: '8px', border: '1px solid #065f46' }}>ভাড়া (৳) [Edit]</th>
+                                <th style={{ padding: '8px', border: '1px solid #065f46', textAlign: 'center' }}>অ্যাকশন</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {counterBooths.map(b => (
+                                <tr key={b.id} style={{ borderBottom: '1px solid #334155' }}>
+                                  <td style={{ padding: '8px', border: '1px solid #334155' }}>{b.boothNo}</td>
+                                  <td style={{ padding: '8px', border: '1px solid #334155' }}>{b.tenantName}</td>
+                                  <td style={{ padding: '8px', border: '1px solid #334155' }}>
+                                    <input 
+                                      type="number" 
+                                      defaultValue={b.rent} 
+                                      onBlur={(e) => handleRentChange(b.id, e.target.value)} 
+                                      onWheel={(e) => e.target.blur()}
+                                      style={{ padding: '5px', width: '100px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: '#ffffff' }} 
+                                    />
+                                  </td>
+                                  <td style={{ padding: '8px', border: '1px solid #334155', textAlign: 'center' }}>
+                                    <button onClick={() => handleDeleteBooth(b.id)} style={{ padding: '5px 10px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>ডিলিট</button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#0f172a', padding: '10px 14px', borderRadius: '8px', border: '1px solid #334155' }}>
+                        <span style={{ fontSize: '14px', fontWeight: '700', color: '#4ade80' }}>মোট বুথ ভাড়া:</span>
+                        <span style={{ fontSize: '15px', fontWeight: 'bold', color: '#4ade80' }}>+{counterTotalRent.toLocaleString('bn-BD')} টাকা</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <h4 style={{ margin: '0 0 8px', fontSize: '14px', color: '#fb923c' }}>৩. এডমিন খরচসমূহ (বিস্তারিত) ({selectedMonth})</h4>
+                      {adminExpenses.length === 0 ? (
+                        <p style={{ fontSize: '13px', color: '#94a3b8', fontStyle: 'italic', marginBottom: '10px' }}>এই কাউন্টারে কোনো এডমিন খরচ নেই।</p>
+                      ) : (
+                        <div style={{ overflowX: 'auto', marginBottom: '10px' }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px', color: '#f8fafc' }}>
+                            <thead>
+                              <tr style={{ backgroundColor: '#7c2d12', color: '#fed7aa' }}>
+                                <th style={{ padding: '8px', border: '1px solid #9a3412' }}>তারিখ</th>
+                                <th style={{ padding: '8px', border: '1px solid #9a3412' }}>বিবরণ</th>
+                                <th style={{ padding: '8px', border: '1px solid #9a3412' }}>পরিমাণ (৳)</th>
+                                <th style={{ padding: '8px', border: '1px solid #9a3412', textAlign: 'center' }}>অ্যাকশন</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {adminExpenses.map(exp => (
+                                <tr key={exp.id} style={{ borderBottom: '1px solid #334155' }}>
+                                  <td style={{ padding: '8px', border: '1px solid #334155' }}>{exp.date}</td>
+                                  <td style={{ padding: '8px', border: '1px solid #334155' }}>{exp.title || exp.description}</td>
+                                  <td style={{ padding: '8px', border: '1px solid #334155' }}>৳{exp.amount}</td>
+                                  <td style={{ padding: '8px', border: '1px solid #334155', textAlign: 'center' }}>
+                                    <button onClick={() => handleDeleteExpense(exp.id)} style={{ padding: '5px 10px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>ডিলিট</button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#0f172a', padding: '10px 14px', borderRadius: '8px', border: '1px solid #334155' }}>
+                        <span style={{ fontSize: '14px', fontWeight: '700', color: '#fb923c' }}>মোট এডমিন খরচ:</span>
+                        <span style={{ fontSize: '15px', fontWeight: 'bold', color: '#fb923c' }}>-{counterTotalAdminExpense.toLocaleString('bn-BD')} টাকা</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <h4 style={{ margin: '0 0 8px', fontSize: '14px', color: '#f87171' }}>৪. মোট ব্রাঞ্চ খরচ (টোটাল) ({selectedMonth})</h4>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#0f172a', padding: '10px 14px', borderRadius: '8px', border: '1px solid #334155' }}>
+                        <span style={{ fontSize: '14px', fontWeight: '700', color: '#f87171' }}>মোট ব্রাঞ্চ খরচ (টোটাল):</span>
+                        <span style={{ fontSize: '15px', fontWeight: 'bold', color: '#f87171' }}>-{counterTotalBranchExpense.toLocaleString('bn-BD')} টাকা</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <h4 style={{ margin: '0 0 8px', fontSize: '14px', color: '#fde047' }}>৫. স্টাফ বেতনসমূহ বিস্তারিত ({selectedMonth})</h4>
+                      {counterSalaries.length === 0 ? (
+                        <p style={{ fontSize: '13px', color: '#94a3b8', fontStyle: 'italic', marginBottom: '10px' }}>এই কাউন্টারে বেতনের কোনো রেকর্ড নেই।</p>
+                      ) : (
+                        <div style={{ overflowX: 'auto', marginBottom: '10px' }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px', color: '#f8fafc' }}>
+                            <thead>
+                              <tr style={{ backgroundColor: '#713f12', color: '#fde047' }}>
+                                <th style={{ padding: '8px', border: '1px solid #854d0e' }}>স্টাফ নাম</th>
+                                <th style={{ padding: '8px', border: '1px solid #854d0e' }}>পদবী</th>
+                                <th style={{ padding: '8px', border: '1px solid #854d0e' }}>প্রদেয় বেতন (৳)</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {counterSalaries.map(sal => (
+                                <tr key={sal.id} style={{ borderBottom: '1px solid #334155' }}>
+                                  <td style={{ padding: '8px', border: '1px solid #334155' }}>{sal.staffName}</td>
+                                  <td style={{ padding: '8px', border: '1px solid #334155' }}>{sal.designation}</td>
+                                  <td style={{ padding: '8px', border: '1px solid #334155' }}>৳{sal.totalPayable}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#0f172a', padding: '10px 14px', borderRadius: '8px', border: '1px solid #334155' }}>
+                        <span style={{ fontSize: '14px', fontWeight: '700', color: '#fde047' }}>মোট বেতন:</span>
+                        <span style={{ fontSize: '15px', fontWeight: 'bold', color: '#fde047' }}>-{counterTotalSalary.toLocaleString('bn-BD')} টাকা</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          <div id="economic-summary-box" style={{ backgroundColor: '#111827', color: '#fff', padding: '20px', borderRadius: '12px', marginTop: '30px', border: '1px solid #334155' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '10px' }}>
+              <h3 style={{ margin: 0, fontSize: '18px', color: '#f8fafc' }}>📊 সর্বমোট অর্থনৈতিক সামারি ({selectedMonth})</h3>
+              <button 
+                type="button" 
+                onClick={handleDownloadSummaryPDF}
+                style={{ padding: '7px 15px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}
+              >
+                📥 PDF ডাউনলোড করুন
+              </button>
+            </div>
+            <hr style={{ borderColor: 'rgba(255,255,255,0.2)' }} />
+            <p style={{ fontSize: '15px', margin: '8px 0' }}>🎫 মোট টিকেট কমিশন (ইনকাম): <strong style={{ color: '#38bdf8' }}>+{totalTicketsIncome.toLocaleString('bn-BD')} ৳</strong></p>
+            <p style={{ fontSize: '15px', margin: '8px 0' }}>🏢 মোট দোকান ভাড়া (ইনকাম): <strong style={{ color: '#4ade80' }}>+{totalRent.toLocaleString('bn-BD')} ৳</strong></p>
+            <p style={{ fontSize: '15px', margin: '8px 0' }}>📉 মোট খরচ (সকল খরচ): <strong style={{ color: '#f87171' }}>-{totalExpense.toLocaleString('bn-BD')} ৳</strong></p>
+            <p style={{ fontSize: '15px', margin: '8px 0' }}>👥 মোট স্টাফ বেতন: <strong style={{ color: '#60a5fa' }}>-{totalSalariesExpense.toLocaleString('bn-BD')} ৳</strong></p>
+            <hr style={{ borderColor: 'rgba(255,255,255,0.2)' }} />
+            <h3 style={{ fontSize: '20px', marginTop: '12px', color: '#fef08a' }}>
+              💰 সর্বমোট অবশিষ্ট নীট জমা: {netIncome.toLocaleString('bn-BD')} ৳
+            </h3>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'salary' && (
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '15px', background: '#1e293b', padding: '16px 20px', borderRadius: '12px', border: '1px solid #334155', marginBottom: '20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <label htmlFor="monthSelect" style={{ fontWeight: '700', color: '#60a5fa', fontSize: '14px' }}>বর্তমান কার্যরত মাস নির্বাচন:</label>
+              <select 
+                id="monthSelect" 
+                value={selectedMonth}
+                onChange={(e) => {
+                  setSelectedMonth(e.target.value);
+                  setSalaryForm(prev => ({ ...prev, month: e.target.value }));
+                }}
+                style={{ padding: '8px 15px', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#0f172a', color: '#ffffff', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', outline: 'none' }}
+              >
+                {generateMonthOptions().map(m => (
+                  <option key={m} value={m} style={{ backgroundColor: '#0f172a', color: '#ffffff' }}>{m}</option>
+                ))}
+              </select>
+            </div>
+            
+            <button 
+              type="button" 
+              onClick={handleAutoLoadPreviousMonthSalaries}
+              style={{ padding: '9px 16px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>
+              🔄 পূর্ববর্তী মাস থেকে স্টাফ ডাটা কপি করুন
+            </button>
+          </div>
+
+          <div style={{ backgroundColor: '#1e293b', padding: '20px', borderRadius: '12px', border: '1px solid #334155', marginBottom: '25px' }}>
+            <h3 style={{ margin: '0 0 14px', fontSize: '16px', fontWeight: '700', color: '#f8fafc' }}>
+              ➕ স্টাফের নতুন বেতন এন্ট্রি ({selectedMonth})
+            </h3>
+            
+            <div style={{ marginBottom: '15px', backgroundColor: '#064e3b', padding: '12px', borderRadius: '8px', border: '1px solid #065f46' }}>
+              <label style={{ fontSize: '12px', fontWeight: '700', color: '#4ade80', display: 'block', marginBottom: '4px' }}>💡 শর্টকাট: নিবন্ধিত স্টাফ লিস্ট থেকে সিলেক্ট করুন</label>
+              <select 
+                onChange={(e) => {
+                  const email = e.target.value;
+                  if (!email) return;
+                  const staff = staffDataMap?.[email];
+                  if (staff) {
+                    const dim = Number(salaryForm.daysInMonth) || 30;
+                    const ad = Number(salaryForm.absentDays) || 0;
+                    const b = Number(staff.basicsalary ?? staff.basicSalary) || 15000;
+                    const adv = Number(staff.advancesalary ?? staff.advanceSalary) || 0;
+                    const { deduction, total } = calculateSalaryDetails(b, dim, ad, adv);
+
+                    setSalaryForm(prev => ({
+                      ...prev,
+                      staffName: staff.name || '',
+                      branch: countersList.includes(staff.branch) ? staff.branch : countersList[0],
+                      staffId: email.split('@')[0].toUpperCase(),
+                      basicSalary: b,
+                      advanceSalary: adv,
+                      unpaidLeaveDeduction: deduction,
+                      totalPayable: total
+                    }));
+                  }
+                }}
+                style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #065f46', backgroundColor: '#0f172a', fontWeight: '600', color: '#4ade80', cursor: 'pointer' }}
+              >
+                <option value="" style={{ backgroundColor: '#0f172a', color: '#ffffff' }}>-- স্টাফ সিলেক্ট করুন (অটো-ফিল) --</option>
+                {activeStaffs.map(email => (
+                  <option key={email} value={email} style={{ backgroundColor: '#0f172a', color: '#ffffff' }}>
+                    {staffDataMap[email]?.name || email} — কাউন্টার: [{staffDataMap[email]?.branch || 'নেই'}]
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <form onSubmit={handleSaveSalary} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', alignItems: 'flex-end' }}>
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: '600', color: '#cbd5e1', display: 'block', marginBottom: '4px' }}>মাস</label>
+                <input type="text" name="month" value={salaryForm.month} readOnly style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#064e3b', color: '#fff' }} required />
+              </div>
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: '600', color: '#cbd5e1', display: 'block', marginBottom: '4px' }}>নাম</label>
+                <input type="text" name="staffName" placeholder="যেমন: রহিম" value={salaryForm.staffName} onChange={handleSalaryInputChange} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#0f172a', color: '#ffffff' }} required />
+              </div>
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: '600', color: '#cbd5e1', display: 'block', marginBottom: '4px' }}>মূল কাউন্টার</label>
+                <select name="branch" value={salaryForm.branch} onChange={handleSalaryInputChange} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#0f172a', color: '#ffffff', fontWeight: 'bold' }} required>
+                  {countersList.map(c => <option key={c} value={c} style={{ backgroundColor: '#0f172a', color: '#ffffff' }}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: '600', color: '#cbd5e1', display: 'block', marginBottom: '4px' }}>স্টাফ আইডি</label>
+                <input type="text" name="staffId" placeholder="AKT 26-001" value={salaryForm.staffId} onChange={handleSalaryInputChange} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#0f172a', color: '#ffffff' }} required />
+              </div>
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: '600', color: '#cbd5e1', display: 'block', marginBottom: '4px' }}>পদবী</label>
+                <input type="text" name="designation" placeholder="ম্যানেজার" value={salaryForm.designation} onChange={handleSalaryInputChange} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#0f172a', color: '#ffffff' }} required />
+              </div>
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: '600', color: '#cbd5e1', display: 'block', marginBottom: '4px' }}>মূল বেতন (৳)</label>
+                <input type="number" name="basicSalary" placeholder="১৫০০০" value={salaryForm.basicSalary} onChange={handleSalaryInputChange} onWheel={(e) => e.target.blur()} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#0f172a', color: '#ffffff' }} required />
+              </div>
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: '600', color: '#cbd5e1', display: 'block', marginBottom: '4px' }}>অনুপস্থিত দিন</label>
+                <input type="number" name="absentDays" value={salaryForm.absentDays} onChange={handleSalaryInputChange} onWheel={(e) => e.target.blur()} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#0f172a', color: '#ffffff' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: '600', color: '#cbd5e1', display: 'block', marginBottom: '4px' }}>অগ্রিম বেতন কর্তন (৳)</label>
+                <input type="number" name="advanceSalary" value={salaryForm.advanceSalary} onChange={handleSalaryInputChange} onWheel={(e) => e.target.blur()} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#0f172a', color: '#ffffff' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: '600', color: '#cbd5e1', display: 'block', marginBottom: '4px' }}>সর্বমোট প্রদেয় বেতন (৳)</label>
+                <input type="number" name="totalPayable" value={salaryForm.totalPayable} onChange={handleSalaryInputChange} onWheel={(e) => e.target.blur()} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#064e3b', color: '#4ade80', fontWeight: 'bold' }} required />
+              </div>
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: '600', color: '#cbd5e1', display: 'block', marginBottom: '4px' }}>পরিশোধ স্ট্যাটাস</label>
+                <select name="paymentStatus" value={salaryForm.paymentStatus} onChange={handleSalaryInputChange} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#0f172a', color: '#ffffff' }}>
+                  <option value="অপরিশোধ" style={{ backgroundColor: '#0f172a', color: '#ffffff' }}>অপরিশোধ</option>
+                  <option value="পরিশোধিত" style={{ backgroundColor: '#0f172a', color: '#ffffff' }}>পরিশোধিত</option>
+                </select>
+              </div>
+              <button type="submit" disabled={isSavingSalary} style={{ gridColumn: '1 / -1', padding: '12px', backgroundColor: isSavingSalary ? '#64748b' : '#16a34a', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '600', cursor: isSavingSalary ? 'not-allowed' : 'pointer' }}>
+                {isSavingSalary ? 'জমা হচ্ছে...' : 'বেতনের রেকর্ড সেভ করুন'}
+              </button>
+            </form>
+          </div>
+
+          {/* স্টাফ বেতন রেকর্ডসমূহ ড্রপডাউন / টগল সেকশন */}
+          <div style={{ backgroundColor: '#1e293b', borderRadius: '12px', border: '1px solid #334155', overflow: 'hidden', marginBottom: '20px' }}>
+            <div 
+              onClick={() => setIsSalaryTableOpen(prev => !prev)}
+              style={{ padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', backgroundColor: '#0f172a', userSelect: 'none' }}
+            >
+              <h3 style={{ margin: 0, fontSize: '15px', fontWeight: '700', color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>{isSalaryTableOpen ? '▼' : '▶'}</span>
+                📋 স্টাফ বেতন রেকর্ডসমূহ (কাউন্টার ওয়াইস ভাগ করা) ({selectedMonth})
+              </h3>
+              <button 
+                type="button" 
+                style={{ fontSize: '12px', color: '#ffffff', fontWeight: '600', backgroundColor: '#334155', border: '1px solid #475569', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer' }}
+              >
+                {isSalaryTableOpen ? 'ড্রপডাউন বন্ধ করুন ▴' : 'ড্রপডাউন খুলুন ▾'}
+              </button>
+            </div>
+
+            {isSalaryTableOpen && (
+              <div style={{ padding: '16px 20px' }}>
+                {activeSalaries.filter(s => s.month === selectedMonth).length === 0 ? (
+                  <p style={{ fontSize: '13px', color: '#94a3b8', fontStyle: 'italic', margin: 0 }}>এই মাসে কোনো বেতনের রেকর্ড নেই।</p>
+                ) : (
+                  ALL_REPORT_COUNTERS.map(counterName => {
+                    const counterSalaries = activeSalaries.filter(s => s.month === selectedMonth && (s.branch === counterName || (!countersList.includes(s.branch) && counterName === "অনির্দিষ্ট/অন্যান্য কাউন্টার")));
+                    if (counterSalaries.length === 0) return null;
+
+                    return (
+                      <div key={counterName} style={{ marginBottom: '20px', backgroundColor: '#1e293b', borderRadius: '12px', border: '1px solid #334155', overflow: 'hidden' }}>
+                        <div style={{ backgroundColor: '#0f172a', padding: '12px 18px', fontWeight: 'bold', color: '#60a5fa', borderBottom: '1px solid #334155', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span>📍 কাউন্টার: {counterName}</span>
+                          <span style={{ fontSize: '12px', backgroundColor: '#334155', padding: '4px 8px', borderRadius: '6px', color: '#f8fafc' }}>
+                            মোট স্টাফ: {counterSalaries.length} জন | মোট প্রদেয়: ৳{counterSalaries.reduce((sum, s) => sum + (Number(s.totalPayable) || 0), 0).toLocaleString('bn-BD')}
+                          </span>
+                        </div>
+                        <div style={{ padding: '15px', overflowX: 'auto' }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px', color: '#f8fafc' }}>
+                            <thead>
+                              <tr style={{ backgroundColor: '#334155', color: '#f8fafc' }}>
+                                <th style={{ padding: '10px', border: '1px solid #475569' }}>নাম</th>
+                                <th style={{ padding: '10px', border: '1px solid #475569' }}>আইডি</th>
+                                <th style={{ padding: '10px', border: '1px solid #475569' }}>ব্রাঞ্চ</th>
+                                <th style={{ padding: '10px', border: '1px solid #475569' }}>পদবী</th>
+                                <th style={{ padding: '10px', border: '1px solid #475569' }}>প্রদেয় বেতন (৳)</th>
+                                <th style={{ padding: '10px', border: '1px solid #475569' }}>স্ট্যাটাস</th>
+                                <th style={{ padding: '10px', border: '1px solid #475569', textAlign: 'center' }}>অ্যাকশন</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {counterSalaries.map(sal => (
+                                <tr key={sal.id} style={{ borderBottom: '1px solid #334155' }}>
+                                  <td style={{ padding: '10px', border: '1px solid #475569' }}>{sal.staffName}</td>
+                                  <td style={{ padding: '10px', border: '1px solid #475569' }}>{sal.staffId}</td>
+                                  <td style={{ padding: '10px', border: '1px solid #475569' }}>{sal.branch}</td>
+                                  <td style={{ padding: '10px', border: '1px solid #475569' }}>{sal.designation}</td>
+                                  <td style={{ padding: '10px', border: '1px solid #475569', fontWeight: 'bold', color: '#4ade80' }}>৳{sal.totalPayable}</td>
+                                  <td style={{ padding: '10px', border: '1px solid #475569' }}>
+                                    <span style={{ padding: '4px 8px', borderRadius: '4px', fontSize: '11px', backgroundColor: sal.paymentStatus === 'পরিশোধিত' ? '#064e3b' : '#7c2d12', color: '#fff' }}>
+                                      {sal.paymentStatus || 'অপরিশোধ'}
+                                    </span>
+                                  </td>
+                                  <td style={{ padding: '10px', border: '1px solid #475569', textAlign: 'center' }}>
+                                    <button onClick={() => handleDeleteSalary(sal.id)} style={{ padding: '5px 10px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>ডিলিট</button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}

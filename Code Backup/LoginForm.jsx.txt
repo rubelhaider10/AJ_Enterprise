@@ -1,0 +1,100 @@
+import React from 'react';
+import { sendPasswordResetEmail } from 'firebase/auth';
+import { auth } from '../firebase';
+
+const LoginForm = ({ emailInput, setEmailInput, passwordInput, setPasswordInput, handleLogin }) => {
+
+  const handleForgotPassword = async () => {
+    const email = prompt("দয়া করে আপনার একাউন্টের রেজিস্টার্ড ইমেইল এড্রেসটি লিখুন:");
+    if (!email) return;
+
+    try {
+      await sendPasswordResetEmail(auth, email);
+      alert("সফল! পাসওয়ার্ড রিসেট করার একটি লিঙ্ক আপনার ইমেইলে পাঠানো হয়েছে। দয়া করে ইনবক্স বা স্প্যাম (Spam) ফোল্ডার চেক করুন।");
+    } catch (error) {
+      alert("রিসেট লিঙ্ক পাঠাতে সমস্যা হয়েছে: " + error.message);
+    }
+  };
+
+  return (
+    <div style={{ 
+      display: 'flex', 
+      justifyContent: 'center', 
+      alignItems: 'center', 
+      height: '100vh', 
+      background: 'linear-gradient(135deg, #090d16 0%, #1e1b4b 100%)', 
+      fontFamily: "'Hind Siliguri', sans-serif" 
+    }}>
+      <form onSubmit={handleLogin} style={{ 
+        backgroundColor: '#ffffff', 
+        padding: '45px 35px', 
+        borderRadius: '24px', 
+        width: '380px', 
+        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.4)', 
+        border: '1px solid rgba(255, 255, 255, 0.1)' 
+      }}>
+        <div style={{ textAlign: 'center', marginBottom: '28px' }}>
+          <img 
+            src="https://i.postimg.cc/9MnZNrQ6/AJ-Enterprise-LOGO.png" 
+            alt="AJ Enterprise Logo" 
+            style={{ height: '65px', objectFit: 'contain', marginBottom: '12px' }} 
+          />
+          <h2 style={{ margin: '0 0 6px', color: '#0f172a', fontSize: '22px', fontWeight: '700' }}>AJ Enterprise</h2>
+          <p style={{ margin: 0, fontSize: '14px', color: '#64748b', fontWeight: '500' }}>
+            আপনার অ্যাকাউন্টে লগইন করুন
+          </p>
+        </div>
+        
+        <div style={{ marginBottom: '18px' }}>
+          <label style={{ fontSize: '25px', fontWeight: '600', color: '#334155', display: 'block', marginBottom: '6px' }}>ইমেইল অ্যাড্রেস</label>
+          <input 
+            type="email" 
+            value={emailInput} 
+            onChange={e => setEmailInput(e.target.value)} 
+            placeholder="admin@aj.com" 
+            style={{ width: '100%', padding: '12px 14px', borderRadius: '12px', border: '1px solid #cbd5e1', boxSizing: 'border-box', fontSize: '14px', outline: 'none', background: '#f8fafc', color: '#0f172a' }} 
+            required 
+          />
+        </div>
+        
+        <div style={{ marginBottom: '24px' }}>
+          <label style={{ fontSize: '25px', fontWeight: '600', color: '#334155', display: 'block', marginBottom: '6px' }}>পাসওয়ার্ড</label>
+          <input 
+            type="password" 
+            value={passwordInput} 
+            onChange={e => setPasswordInput(e.target.value)} 
+            placeholder="••••••••" 
+            style={{ width: '100%', padding: '12px 14px', borderRadius: '12px', border: '1px solid #cbd5e1', boxSizing: 'border-box', fontSize: '14px', outline: 'none', background: '#f8fafc', color: '#0f172a' }} 
+            required 
+          />
+          
+          {/* পাসওয়ার্ড ভুলে গেছেন লিংক */}
+          <div style={{ textAlign: 'right', marginTop: '8px' }}>
+            <button 
+              type="button" 
+              onClick={handleForgotPassword}
+              style={{ 
+                background: 'none', 
+                border: 'none', 
+                color: '#2563eb', 
+                fontSize: '13px', 
+                fontWeight: '600', 
+                cursor: 'pointer', 
+                padding: 0,
+                textDecoration: 'underline' 
+              }}
+            >
+              Forgot password?
+            </button>
+          </div>
+        </div>
+        
+        <button type="submit" style={{ width: '100%', padding: '13px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '12px', fontWeight: '600', cursor: 'pointer', fontSize: '15px', boxShadow: '0 4px 12px rgba(37, 99, 235, 0.3)' }}>
+          লগইন করুন
+        </button>
+      </form>
+    </div>
+  );
+};
+
+export default LoginForm;

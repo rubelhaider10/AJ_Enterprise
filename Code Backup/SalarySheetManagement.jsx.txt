@@ -1,0 +1,189 @@
+import React, { useState, useEffect } from 'react';
+import { db } from './firebase';
+import { 
+  collection, addDoc, getDocs, updateDoc, deleteDoc, doc 
+} from 'firebase/firestore';
+
+export default function SalarySheetManager() {
+  const [salaries, setSalaries] = useState([]);
+  const [selectedMonth, setSelectedMonth] = useState('August 26');
+  const [isEditing, setIsEditing] = useState(null);
+
+  // ফর্ম স্টেট (রেফারেন্স পিডিএফ অনুযায়ী)
+  const [formData, setFormData] = useState({
+    month: 'August 26',
+    staffName: '',
+    staffId: '',
+    designation: '',
+    transportName: 'একতা ট্রান্সপোর্ট',
+    basicSalary: '',
+    daysInMonth: '31',
+    paidLeave: '0',
+    unpaidLeaveDeduction: '0',
+    advanceSalary: '0',
+    totalPayable: '',
+    paymentStatus: 'অপরিশোধ'
+  });
+
+  const salariesCollectionRef = collection(db, 'salaries');
+
+  const fetchSalaries = async () => {
+    try {
+      const data = await getDocs(salariesCollectionRef);
+      setSalaries(data.docs.map(doc => ({ ...doc.data(), id: doc.id })));
+    } catch (error) {
+      console.error("Error fetching salaries: ", error);
+    }
+  };
+
+  useEffect(() => {
+    fetchSalaries();
+  }, []);
+
+  // মোট প্রদেয় বেতন অটো ক্যালকুলেশন লজিক: মূল বেতন - কর্তন - অগ্রিম
+  const calculateTotal = (basic, deduction, advance) => {
+    const b = Number(basic) || 0;
+    const d = Number(deduction) || 0;
+    const a = Number(advance) || 0;
+    return b - d - a;
+  };
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    const updatedForm = { ...formData, [name]: value };
+    
+    if (['basicSalary', 'unpaidLeaveDeduction', 'advanceSalary'].includes(name)) {
+      updatedForm.totalPayable = calculateTotal(
+        updatedForm.basicSalary, 
+        updatedForm.unpaidLeaveDeduction, 
+        updatedForm.advanceSalary
+      );
+    }
+    setFormData(updatedForm);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      if (isEditing) {
+        await updateDoc(doc(db, 'salaries', isEditing), formData);
+        setIsEditing(null);
+      } else {
+        await addDoc(salariesCollectionRef, formData);
+      }
+      setFormData({
+        month: selectedMonth,
+        staffName: '',
+        staffId: '',
+        designation: '',
+        transportName: 'একতা ট্রান্সপোর্ট',
+        basicSalary: '',
+        daysInMonth: '31',
+        paidLeave: '0',
+        unpaidLeaveDeduction: '0',
+        advanceSalary: '0',
+        totalPayable: '',
+        paymentStatus: 'অপরিশোধ'
+      });
+      fetchSalaries();
+    } catch (error) {
+      console.error("Error saving salary data: ", error);
+    }
+  };
+
+  const handleEdit = (item) => {
+    setIsEditing(item.id);
+    setFormData(item);
+  };
+
+  const handleDelete = async (id) => {
+    if (window.confirm('এই বেতনের রেকর্ডটি ডিলিট করতে চান?')) {
+      await deleteDoc(doc(db, 'salaries', id));
+      fetchSalaries();
+    }
+  };
+
+  const totalSalarySum = salaries
+    .filter(s => s.month === selectedMonth)
+    .reduce((sum, item) => sum + Number(item.totalPayable || 0), 0);
+
+  return (
+    <div className="p-6 bg-white rounded-lg shadow-md mt-6">
+      <h2 className="text-xl font-bold mb-4 text-gray-800">স্টাফ বেতন বই (একতা পরিবহন, আজমপুর)[cite: 21]</h2>
+
+      {/* মাস নির্বাচন */}
+      <div className="mb-4">
+        <label className="font-semibold mr-2">মাস নির্বাচন করুন[cite: 21]:</label>
+        <input 
+          type="text" name="month" value={selectedMonth} 
+          onChange={(e) => setSelectedMonth(e.target.value)} 
+          className="border p-2 rounded"
+        />
+      </div>
+
+      {/* ফর্ম */}
+      <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-6 p-4 bg-gray-50 rounded border text-sm">
+        <input type="text" name="staffName" placeholder="স্টাফের নাম[cite: 21]" value={formData.staffName} onChange={handleInputChange} className="border p-2 rounded" required />
+        <input type="text" name="staffId" placeholder="স্টাফ আইডি (যেমন: AKT 26-001)[cite: 21]" value={formData.staffId} onChange={handleInputChange} className="border p-2 rounded" required />
+        <input type="text" name="designation" placeholder="পদবী (যেমন: কাউন্টার মাস্টার)[cite: 21]" value={formData.designation} onChange={handleInputChange} className="border p-2 rounded" required />
+        <input type="text" name="transportName" placeholder="পরিবহন এর নাম[cite: 21]" value={formData.transportName} onChange={handleInputChange} className="border p-2 rounded" />
+        <input type="number" name="basicSalary" placeholder="মূল বেতন[cite: 21]" value={formData.basicSalary} onChange={handleInputChange} className="border p-2 rounded" required />
+        <input type="number" name="daysInMonth" placeholder="মাসের দিন[cite: 21]" value={formData.daysInMonth} onChange={handleInputChange} className="border p-2 rounded" />
+        <input type="number" name="paidLeave" placeholder="সবেতন ছুটি[cite: 21]" value={formData.paidLeave} onChange={handleInputChange} className="border p-2 rounded" />
+        <input type="number" name="unpaidLeaveDeduction" placeholder="অবৈতনিক ছুটি কর্তনকৃত বেতন[cite: 21]" value={formData.unpaidLeaveDeduction} onChange={handleInputChange} className="border p-2 rounded" />
+        <input type="number" name="advanceSalary" placeholder="অগ্রিম বেতন[cite: 21]" value={formData.advanceSalary} onChange={handleInputChange} className="border p-2 rounded" />
+        <input type="number" name="totalPayable" placeholder="মোট প্রদেয় বেতন[cite: 21]" value={formData.totalPayable} readOnly className="border p-2 rounded bg-gray-200 font-bold" />
+        <select name="paymentStatus" value={formData.paymentStatus} onChange={handleInputChange} className="border p-2 rounded">
+          <option value="অপরিশোধ">অপরিশোধ[cite: 21]</option>
+          <option value="পরিশোধিত">পরিশোধিত</option>
+        </select>
+        <button type="submit" className="bg-green-600 text-white p-2 rounded col-span-full font-semibold">
+          {isEditing ? 'বেতন রেকর্ড আপডেট করুন' : 'নতুন বেতন এন্ট্রি যোগ করুন'}
+        </button>
+      </form>
+
+      {/* টেবিল */}
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse border border-gray-300 text-left text-xs">
+          <thead>
+            <tr className="bg-gray-100">
+              <th className="border p-2">স্টাফ আইডি[cite: 21]</th>
+              <th className="border p-2">স্টাফের নাম[cite: 21]</th>
+              <th className="border p-2">পদবী[cite: 21]</th>
+              <th className="border p-2">পরিবহন[cite: 21]</th>
+              <th className="border p-2">মূল বেতন[cite: 21]</th>
+              <th className="border p-2">কর্তন[cite: 21]</th>
+              <th className="border p-2">অগ্রিম[cite: 21]</th>
+              <th className="border p-2">মোট প্রদেয়[cite: 21]</th>
+              <th className="border p-2">স্ট্যাটাস[cite: 21]</th>
+              <th className="border p-2">অ্যাকশন</th>
+            </tr>
+          </thead>
+          <tbody>
+            {salaries.filter(s => s.month === selectedMonth).map((item) => (
+              <tr key={item.id} className="hover:bg-gray-50">
+                <td className="border p-2 font-mono">{item.staffId}</td>
+                <td className="border p-2 font-semibold">{item.staffName}</td>
+                <td className="border p-2">{item.designation}</td>
+                <td className="border p-2">{item.transportName}</td>
+                <td className="border p-2">৳{item.basicSalary}</td>
+                <td className="border p-2">৳{item.unpaidLeaveDeduction}</td>
+                <td className="border p-2">৳{item.advanceSalary}</td>
+                <td className="border p-2 font-bold text-blue-600">৳{item.totalPayable}</td>
+                <td className="border p-2">{item.paymentStatus}</td>
+                <td className="border p-2 space-x-1">
+                  <button onClick={() => handleEdit(item)} className="bg-yellow-500 text-white px-2 py-1 rounded">এডিট</button>
+                  <button onClick={() => handleDelete(item.id)} className="bg-red-600 text-white px-2 py-1 rounded">ডিলিট</button>
+                </td>
+              </tr>
+            ))}
+            <tr className="bg-gray-100 font-bold text-sm">
+              <td colSpan="4" className="border p-2 text-right">মোট (Total)[cite: 21]</td>
+              <td colSpan="6" className="border p-2 text-green-700">৳{totalSalarySum}[cite: 21]</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
